@@ -5,8 +5,9 @@ using ForrajeriaJovitaAPI.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Configurar URLs
-builder.WebHost.UseUrls("http://localhost:5000", "https://localhost:5001");
+// Configurar puerto de Railway
+var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
+builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 
 // Configurar DbContext
 builder.Services.AddDbContext<ForrajeriaContext>(options =>
@@ -54,30 +55,25 @@ builder.Services.AddSwaggerGen(c =>
             Name = "Forrajeria Jovita"
         }
     });
-    // Ordenar endpoints por ruta
     c.OrderActionsBy(apiDesc => apiDesc.RelativePath);
 });
 
 var app = builder.Build();
 
-// Middleware - Swagger disponible siempre
+// Swagger siempre disponible
 app.UseSwagger();
 app.UseSwaggerUI(c =>
 {
     c.SwaggerEndpoint("/swagger/v1/swagger.json", "Forrajeria Jovita API v1");
-    c.RoutePrefix = string.Empty; // Swagger en la raíz: http://localhost:5000
+    c.RoutePrefix = string.Empty;
     c.DocumentTitle = "Forrajeria Jovita API";
-    c.DefaultModelsExpandDepth(-1); // Ocultar schemas por defecto
+    c.DefaultModelsExpandDepth(-1);
 });
 
 // CORS
 app.UseCors("AllowAll");
 
-// HTTPS Redirection (comentado para desarrollo solo HTTP)
-// app.UseHttpsRedirection();
-
 app.UseAuthorization();
-
 app.MapControllers();
 
 // Endpoint de prueba
@@ -85,7 +81,8 @@ app.MapGet("/api/health", () => new
 {
     status = "OK",
     message = "API funcionando correctamente",
-    timestamp = DateTime.Now
+    timestamp = DateTime.Now,
+    environment = Environment.GetEnvironmentVariable("RAILWAY_ENVIRONMENT") ?? "local"
 })
 .WithTags("Health Check");
 
