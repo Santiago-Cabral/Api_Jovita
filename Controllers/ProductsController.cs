@@ -1,10 +1,7 @@
-using ForrajeriaJovitaAPI.Data;
 using ForrajeriaJovitaAPI.DTOs.Products;
-using ForrajeriaJovitaAPI.Models;
+using ForrajeriaJovitaAPI.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-
 
 namespace ForrajeriaJovitaAPI.Controllers
 {
@@ -12,83 +9,74 @@ namespace ForrajeriaJovitaAPI.Controllers
     [Route("api/[controller]")]
     public class ProductsController : ControllerBase
     {
-        private readonly ForrajeriaContext _context;
+        private readonly IProductoService _service;
 
-        public ProductsController(ForrajeriaContext context)
+        public ProductsController(IProductoService service)
         {
-            _context = context;
+            _service = service;
         }
 
-        // ===================================
-        // CLIENTE WEB - CATÁLOGO
-        // ===================================
+        // ===========================
+        // CLIENTE - CATÁLOGO
+        // ===========================
         [HttpGet]
         public async Task<IActionResult> GetAll()
         {
-            var products = await _context.Products
-                .Include(p => p.Category)
-                .Select(p => new ProductResponseDto
-                {
-                    Id = p.Id,
-                    Code = p.Code,
-                    Name = p.Name,
-                    RetailPrice = p.RetailPrice,
-                    WholesalePrice = p.WholesalePrice,
-                    Image = p.Image,
-                    CategoryName = p.Category != null ? p.Category.Name : null,
-                    Stock = p.ProductsStocks.Sum(s => (int)s.Quantity)
-                })
-                .ToListAsync();
-
-            return Ok(products);
+            var result = await _service.GetAllAsync();
+            return Ok(result);
         }
 
-        // ===================================
+        [HttpGet("{id}")]
+        public async Task<IActionResult> GetById(int id)
+        {
+            var result = await _service.GetByIdAsync(id);
+            if (result == null)
+                return NotFound("Producto no encontrado.");
+
+            return Ok(result);
+        }
+
+        // ===========================
+        // STOCK POR SUCURSAL
+        // ===========================
+        [HttpGet("{id}/stock")]
+        public async Task<IActionResult> GetStock(int id)
+        {
+            var result = await _service.GetStocksAsync(id);
+            return Ok(result);
+        }
+
+        // ===========================
         // ADMIN
-        // ===================================
+        // ===========================
         [Authorize(Roles = "administrador/a")]
         [HttpPost]
         public async Task<IActionResult> Create(ProductCreateDto dto)
         {
-            var product = new Product
-            {
-                Code = dto.Code,
-                Name = dto.Name,
-                CostPrice = dto.CostPrice,
-                RetailPrice = dto.RetailPrice,
-                WholesalePrice = dto.WholesalePrice,
-                Image = dto.Image,
-                CategoryId = dto.CategoryId,
-                IsActived = true,
-                IsDeleted = false,
-                CreationDate = DateTime.UtcNow
-            };
-
-            _context.Products.Add(product);
-            await _context.SaveChangesAsync();
-
-            return Ok(product);
+            var created = await _service.CreateAsync(dto);
+            return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
         }
 
         [Authorize(Roles = "administrador/a")]
         [HttpPut("{id}")]
         public async Task<IActionResult> Update(int id, ProductUpdateDto dto)
         {
-            var product = await _context.Products.FindAsync(id)
-                ?? throw new Exception("Producto no encontrado.");
+            var updated = await _service.UpdateAsync(id, dto);
+            if (updated == null)
+                return NotFound("Producto no encontrado.");
 
-            product.Code = dto.Code;
-            product.Name = dto.Name;
-            product.CostPrice = dto.CostPrice;
-            product.RetailPrice = dto.RetailPrice;
-            product.WholesalePrice = dto.WholesalePrice;
-            product.Image = dto.Image;
-            product.CategoryId = dto.CategoryId;
+            return Ok(updated);
+        }
 
-            await _context.SaveChangesAsync();
+        [Authorize(Roles = "administrador/a")]
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> Delete(int id)
+        {
+            var deleted = await _service.DeleteAsync(id);
+            if (!deleted)
+                return NotFound("Producto no encontrado.");
 
-            return Ok(product);
+            return NoContent();
         }
     }
 }
-

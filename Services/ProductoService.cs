@@ -1,11 +1,7 @@
-// ============================================
-// ProductoService.cs - CORREGIDO
-// ============================================
 using Microsoft.EntityFrameworkCore;
 using ForrajeriaJovitaAPI.Data;
 using ForrajeriaJovitaAPI.Models;
 using ForrajeriaJovitaAPI.DTOs.Products;
-
 
 namespace ForrajeriaJovitaAPI.Services
 {
@@ -18,7 +14,7 @@ namespace ForrajeriaJovitaAPI.Services
             _context = context;
         }
 
-        public async Task<List<ProductDto>> GetAllProductsAsync(bool? isActived = null, string? search = null)
+        public async Task<List<ProductResponseDto>> GetAllProductsAsync(bool? isActived = null, string? search = null)
         {
             var query = _context.Products.Where(p => !p.IsDeleted);
 
@@ -30,7 +26,7 @@ namespace ForrajeriaJovitaAPI.Services
 
             var products = await query.ToListAsync();
 
-            return products.Select(p => new ProductDto
+            return products.Select(p => new ProductResponseDto
             {
                 Id = p.Id,
                 Code = p.Code,
@@ -44,7 +40,7 @@ namespace ForrajeriaJovitaAPI.Services
             }).ToList();
         }
 
-        public async Task<ProductDto?> GetProductByIdAsync(int id)
+        public async Task<ProductResponseDto?> GetProductByIdAsync(int id)
         {
             var product = await _context.Products
                 .FirstOrDefaultAsync(p => p.Id == id && !p.IsDeleted);
@@ -52,7 +48,7 @@ namespace ForrajeriaJovitaAPI.Services
             if (product == null)
                 return null;
 
-            return new ProductDto
+            return new ProductResponseDto
             {
                 Id = product.Id,
                 Code = product.Code,
@@ -66,9 +62,8 @@ namespace ForrajeriaJovitaAPI.Services
             };
         }
 
-        public async Task<ProductDto> CreateProductAsync(CreateProductDto dto)
+        public async Task<ProductResponseDto> CreateProductAsync(ProductCreateDto dto)
         {
-            // Validar código único
             if (await _context.Products.AnyAsync(p => p.Code == dto.Code && !p.IsDeleted))
                 throw new InvalidOperationException("Ya existe un producto con ese código");
 
@@ -88,7 +83,7 @@ namespace ForrajeriaJovitaAPI.Services
             _context.Products.Add(product);
             await _context.SaveChangesAsync();
 
-            return new ProductDto
+            return new ProductResponseDto
             {
                 Id = product.Id,
                 Code = product.Code,
@@ -101,7 +96,7 @@ namespace ForrajeriaJovitaAPI.Services
             };
         }
 
-        public async Task<bool> UpdateProductAsync(int id, UpdateProductDto dto)
+        public async Task<bool> UpdateProductAsync(int id, ProductUpdateDto dto)
         {
             var product = await _context.Products.FindAsync(id);
             if (product == null || product.IsDeleted)
