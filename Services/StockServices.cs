@@ -4,7 +4,8 @@
 using Microsoft.EntityFrameworkCore;
 using ForrajeriaJovitaAPI.Data;
 using ForrajeriaJovitaAPI.Models;
-using ForrajeriaJovitaAPI.DTOs;
+using ForrajeriaJovitaAPI.DTOs.Products;
+
 
 namespace ForrajeriaJovitaAPI.Services
 {
