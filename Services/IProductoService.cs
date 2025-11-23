@@ -1,7 +1,8 @@
 // ============================================
 // IProductoService.cs - CORREGIDO
 // ============================================
-using ForrajeriaJovitaAPI.DTOs;
+using ForrajeriaJovitaAPI.DTOs.Products;
+
 
 namespace ForrajeriaJovitaAPI.Services
 {
