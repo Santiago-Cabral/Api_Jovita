@@ -1,95 +1,85 @@
+using ForrajeriaJovitaAPI.DTOs.Clients;
+using ForrajeriaJovitaAPI.Services.Interfaces;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using ForrajeriaJovitaAPI.Data;
-using ForrajeriaJovitaAPI.DTOs;
-using ForrajeriaJovitaAPI.Models;
-using ForrajeriaJovitaAPI.Services;
+using System.Security.Claims;
 
-// Controllers/ClientsController.cs
 namespace ForrajeriaJovitaAPI.Controllers
 {
-    [ApiController]
     [Route("api/[controller]")]
+    [ApiController]
     public class ClientsController : ControllerBase
     {
-        private readonly IClientService _clientService;
+        private readonly IClientAccountService _service;
 
-        public ClientsController(IClientService clientService)
+        public ClientsController(IClientAccountService service)
         {
-            _clientService = clientService;
+            _service = service;
         }
 
-        [HttpGet]
-        public async Task<ActionResult<IEnumerable<ClientDto>>> GetClients([FromQuery] string? search = null)
+        // =============================
+        // CLIENTE WEB (perfil)
+        // =============================
+
+        [Authorize]
+        [HttpGet("me")]
+        public async Task<IActionResult> GetMyClient()
         {
-            try
-            {
-                var clients = await _clientService.GetAllClientsAsync(search);
-                return Ok(clients);
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { message = "Error al obtener clientes", error = ex.Message });
-            }
+            int userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+            var client = await _service.GetMyClientAsync(userId);
+
+            if (client == null)
+                return NotFound(new { message = "El usuario no tiene cliente asignado." });
+
+            return Ok(client);
         }
 
-        [HttpGet("{id}")]
-        public async Task<ActionResult<ClientDto>> GetClient(int id)
-        {
-            try
-            {
-                var client = await _clientService.GetClientByIdAsync(id);
-
-                if (client == null)
-                {
-                    return NotFound(new { message = "Cliente no encontrado" });
-                }
-
-                return Ok(client);
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { message = "Error al obtener cliente", error = ex.Message });
-            }
-        }
-
+        [Authorize]
         [HttpPost]
-        public async Task<ActionResult<ClientDto>> CreateClient(CreateClientDto dto)
+        public async Task<IActionResult> CreateClientForUser(ClientCreateDto dto)
         {
-            try
-            {
-                var client = await _clientService.CreateClientAsync(dto);
-                return CreatedAtAction(nameof(GetClient), new { id = client.Id }, client);
-            }
-            catch (InvalidOperationException ex)
-            {
-                return BadRequest(new { message = ex.Message });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { message = "Error al crear cliente", error = ex.Message });
-            }
+            int userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+            return Ok(await _service.CreateForUserAsync(userId, dto));
         }
 
-        [HttpDelete("{id}")]
-        public async Task<IActionResult> DeleteClient(int id)
+        [Authorize]
+        [HttpPut("me")]
+        public async Task<IActionResult> UpdateMyClient(ClientUpdateDto dto)
         {
-            try
-            {
-                var result = await _clientService.DeleteClientAsync(id);
+            int userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
-                if (!result)
-                {
-                    return NotFound(new { message = "Cliente no encontrado" });
-                }
+            return Ok(await _service.UpdateMyClientAsync(userId, dto));
+        }
 
-                return Ok(new { message = "Cliente eliminado correctamente" });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { message = "Error al eliminar cliente", error = ex.Message });
-            }
+        // =============================
+        // ADMIN
+        // =============================
+
+        [Authorize(Roles = "administrador/a")]
+        [HttpGet]
+        public async Task<IActionResult> GetAll()
+        {
+            return Ok(await _service.GetAllAsync());
+        }
+
+        [Authorize(Roles = "administrador/a")]
+        [HttpGet("{id}")]
+        public async Task<IActionResult> GetById(int id)
+        {
+            var client = await _service.GetByIdAsync(id);
+            if (client == null)
+                return NotFound();
+
+            return Ok(client);
+        }
+
+        [Authorize(Roles = "administrador/a")]
+        [HttpPut("{id}")]
+        public async Task<IActionResult> UpdateByAdmin(int id, ClientCreateDto dto)
+        {
+            return Ok(await _service.UpdateByAdminAsync(id, dto));
         }
     }
 }
-

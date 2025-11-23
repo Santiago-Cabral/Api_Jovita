@@ -28,6 +28,10 @@ namespace ForrajeriaJovitaAPI.Data
         public DbSet<SalePayment> SalesPayments { get; set; }
         public DbSet<Season> Seasons { get; set; }
         public DbSet<User> Users { get; set; }
+        public DbSet<Category> Categories { get; set; }
+        
+
+
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -105,15 +109,21 @@ namespace ForrajeriaJovitaAPI.Data
             {
                 entity.HasKey(e => e.Id);
             });
-
-            // Product
+            // Category
+            modelBuilder.Entity<Category>(entity =>
+            {
+                entity.HasKey(c => c.Id);
+                entity.Property(c => c.Name).IsRequired();
+            });
+            //product
             modelBuilder.Entity<Product>(entity =>
             {
-                entity.HasKey(e => e.Id);
-                entity.Property(e => e.Code).IsRequired();
-                entity.Property(e => e.Name).IsRequired();
-                entity.Property(e => e.BaseUnit).HasConversion<int>();
+                entity.HasOne(p => p.Category)
+                      .WithMany(c => c.Products)
+                      .HasForeignKey(p => p.CategoryId)
+                      .OnDelete(DeleteBehavior.SetNull);
             });
+
 
             // ProductSeason
             modelBuilder.Entity<ProductSeason>(entity =>
