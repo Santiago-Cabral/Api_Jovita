@@ -1,4 +1,3 @@
-// Models/Product.cs
 namespace ForrajeriaJovitaAPI.Models
 {
     public enum BaseUnit
@@ -13,14 +12,23 @@ namespace ForrajeriaJovitaAPI.Models
         public int Id { get; set; }
         public string Code { get; set; } = string.Empty;
         public string Name { get; set; } = string.Empty;
+
         public decimal CostPrice { get; set; }
         public decimal RetailPrice { get; set; }
         public decimal WholesalePrice { get; set; }
+
         public bool IsDeleted { get; set; }
         public bool IsActived { get; set; }
         public DateTime? UpdateDate { get; set; }
         public DateTime CreationDate { get; set; } = DateTime.Now;
+
         public BaseUnit BaseUnit { get; set; }
+
+        // --- NEW ---
+        public string? Image { get; set; }
+        public int? CategoryId { get; set; }
+        public Category? Category { get; set; }
+        // -----------
 
         // Navegación
         public ICollection<ProductSeason> ProductsSeasons { get; set; } = new List<ProductSeason>();

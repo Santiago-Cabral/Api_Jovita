@@ -1,6 +1,6 @@
-namespace ForrajeriaJovitaAPI.Models
+namespace ForrajeriaJovitaAPI.DTOs.Clients
 {
-    public class Client
+    public class ClientResponseDto
     {
         public int Id { get; set; }
         public string FullName { get; set; } = string.Empty;
@@ -8,11 +8,5 @@ namespace ForrajeriaJovitaAPI.Models
         public string Document { get; set; } = string.Empty;
         public decimal Amount { get; set; }
         public decimal DebitBalance { get; set; }
-        public bool IsDeleted { get; set; }
-        public DateTime CreationDate { get; set; } = DateTime.Now;
-
-        // NEW (vincular client con user)
-        public int? UserId { get; set; }
-        public User? User { get; set; }
     }
 }

@@ -1,9 +1,9 @@
+using ForrajeriaJovitaAPI.Data;
+using ForrajeriaJovitaAPI.DTOs.Products;
+using ForrajeriaJovitaAPI.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using ForrajeriaJovitaAPI.Data;
-using ForrajeriaJovitaAPI.DTOs;
-using ForrajeriaJovitaAPI.Models;
-using ForrajeriaJovitaAPI.Services;
 
 namespace ForrajeriaJovitaAPI.Controllers
 {
@@ -11,125 +11,83 @@ namespace ForrajeriaJovitaAPI.Controllers
     [Route("api/[controller]")]
     public class ProductsController : ControllerBase
     {
-        private readonly IProductoService _productoService;
+        private readonly ForrajeriaContext _context;
 
-        public ProductsController(IProductoService productoService)
+        public ProductsController(ForrajeriaContext context)
         {
-            _productoService = productoService;
+            _context = context;
         }
 
-        // GET: api/products
+        // ===================================
+        // CLIENTE WEB - CATÁLOGO
+        // ===================================
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<ProductDto>>> GetProducts(
-            [FromQuery] bool? isActived = null,
-            [FromQuery] string? search = null)
+        public async Task<IActionResult> GetAll()
         {
-            try
-            {
-                var products = await _productoService.GetAllProductsAsync(isActived, search);
-                return Ok(products);
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { message = "Error al obtener productos", error = ex.Message });
-            }
-        }
-
-        // GET: api/products/5
-        [HttpGet("{id}")]
-        public async Task<ActionResult<ProductDto>> GetProduct(int id)
-        {
-            try
-            {
-                var product = await _productoService.GetProductByIdAsync(id);
-
-                if (product == null)
+            var products = await _context.Products
+                .Include(p => p.Category)
+                .Select(p => new ProductResponseDto
                 {
-                    return NotFound(new { message = "Producto no encontrado" });
-                }
+                    Id = p.Id,
+                    Code = p.Code,
+                    Name = p.Name,
+                    RetailPrice = p.RetailPrice,
+                    WholesalePrice = p.WholesalePrice,
+                    Image = p.Image,
+                    CategoryName = p.Category != null ? p.Category.Name : null,
+                    Stock = p.ProductsStocks.Sum(s => (int)s.Quantity)
+                })
+                .ToListAsync();
 
-                return Ok(product);
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { message = "Error al obtener producto", error = ex.Message });
-            }
+            return Ok(products);
         }
 
-        // POST: api/products
+        // ===================================
+        // ADMIN
+        // ===================================
+        [Authorize(Roles = "administrador/a")]
         [HttpPost]
-        public async Task<ActionResult<ProductDto>> CreateProduct(CreateProductDto dto)
+        public async Task<IActionResult> Create(ProductCreateDto dto)
         {
-            try
+            var product = new Product
             {
-                var product = await _productoService.CreateProductAsync(dto);
-                return CreatedAtAction(nameof(GetProduct), new { id = product.Id }, product);
-            }
-            catch (InvalidOperationException ex)
-            {
-                return BadRequest(new { message = ex.Message });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { message = "Error al crear producto", error = ex.Message });
-            }
+                Code = dto.Code,
+                Name = dto.Name,
+                CostPrice = dto.CostPrice,
+                RetailPrice = dto.RetailPrice,
+                WholesalePrice = dto.WholesalePrice,
+                Image = dto.Image,
+                CategoryId = dto.CategoryId,
+                IsActived = true,
+                IsDeleted = false,
+                CreationDate = DateTime.UtcNow
+            };
+
+            _context.Products.Add(product);
+            await _context.SaveChangesAsync();
+
+            return Ok(product);
         }
 
-        // PUT: api/products/5
+        [Authorize(Roles = "administrador/a")]
         [HttpPut("{id}")]
-        public async Task<IActionResult> UpdateProduct(int id, UpdateProductDto dto)
+        public async Task<IActionResult> Update(int id, ProductUpdateDto dto)
         {
-            try
-            {
-                var result = await _productoService.UpdateProductAsync(id, dto);
+            var product = await _context.Products.FindAsync(id)
+                ?? throw new Exception("Producto no encontrado.");
 
-                if (!result)
-                {
-                    return NotFound(new { message = "Producto no encontrado" });
-                }
+            product.Code = dto.Code;
+            product.Name = dto.Name;
+            product.CostPrice = dto.CostPrice;
+            product.RetailPrice = dto.RetailPrice;
+            product.WholesalePrice = dto.WholesalePrice;
+            product.Image = dto.Image;
+            product.CategoryId = dto.CategoryId;
 
-                return Ok(new { message = "Producto actualizado correctamente" });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { message = "Error al actualizar producto", error = ex.Message });
-            }
-        }
+            await _context.SaveChangesAsync();
 
-        // DELETE: api/products/5
-        [HttpDelete("{id}")]
-        public async Task<IActionResult> DeleteProduct(int id)
-        {
-            try
-            {
-                var result = await _productoService.DeleteProductAsync(id);
-
-                if (!result)
-                {
-                    return NotFound(new { message = "Producto no encontrado" });
-                }
-
-                return Ok(new { message = "Producto eliminado correctamente" });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { message = "Error al eliminar producto", error = ex.Message });
-            }
-        }
-
-        // GET: api/products/5/stock
-        [HttpGet("{id}/stock")]
-        public async Task<ActionResult<IEnumerable<ProductStockDto>>> GetProductStock(int id)
-        {
-            try
-            {
-                var stocks = await _productoService.GetProductStockAsync(id);
-                return Ok(stocks);
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { message = "Error al obtener stock", error = ex.Message });
-            }
+            return Ok(product);
         }
     }
 }
+
