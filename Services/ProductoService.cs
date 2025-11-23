@@ -14,17 +14,14 @@ namespace ForrajeriaJovitaAPI.Services
             _context = context;
         }
 
-        public async Task<List<ProductResponseDto>> GetAllProductsAsync(bool? isActived = null, string? search = null)
+        // =====================================
+        // GET ALL
+        // =====================================
+        public async Task<IEnumerable<ProductResponseDto>> GetAllAsync()
         {
-            var query = _context.Products.Where(p => !p.IsDeleted);
-
-            if (isActived.HasValue)
-                query = query.Where(p => p.IsActived == isActived.Value);
-
-            if (!string.IsNullOrWhiteSpace(search))
-                query = query.Where(p => p.Name.Contains(search) || p.Code.Contains(search));
-
-            var products = await query.ToListAsync();
+            var products = await _context.Products
+                .Where(p => !p.IsDeleted)
+                .ToListAsync();
 
             return products.Select(p => new ProductResponseDto
             {
@@ -37,10 +34,13 @@ namespace ForrajeriaJovitaAPI.Services
                 IsActived = p.IsActived,
                 BaseUnit = p.BaseUnit.ToString(),
                 UpdateDate = p.UpdateDate
-            }).ToList();
+            });
         }
 
-        public async Task<ProductResponseDto?> GetProductByIdAsync(int id)
+        // =====================================
+        // GET BY ID
+        // =====================================
+        public async Task<ProductResponseDto?> GetByIdAsync(int id)
         {
             var product = await _context.Products
                 .FirstOrDefaultAsync(p => p.Id == id && !p.IsDeleted);
@@ -62,10 +62,13 @@ namespace ForrajeriaJovitaAPI.Services
             };
         }
 
-        public async Task<ProductResponseDto> CreateProductAsync(ProductCreateDto dto)
+        // =====================================
+        // CREATE
+        // =====================================
+        public async Task<ProductResponseDto> CreateAsync(ProductCreateDto dto)
         {
             if (await _context.Products.AnyAsync(p => p.Code == dto.Code && !p.IsDeleted))
-                throw new InvalidOperationException("Ya existe un producto con ese código");
+                throw new Exception("Ya existe un producto con ese código.");
 
             var product = new Product
             {
@@ -74,10 +77,12 @@ namespace ForrajeriaJovitaAPI.Services
                 CostPrice = dto.CostPrice,
                 RetailPrice = dto.RetailPrice,
                 WholesalePrice = dto.WholesalePrice,
+                Image = dto.Image,
+                CategoryId = dto.CategoryId,
                 BaseUnit = (BaseUnit)dto.BaseUnit,
                 IsActived = true,
                 IsDeleted = false,
-                CreationDate = DateTime.Now
+                CreationDate = DateTime.UtcNow
             };
 
             _context.Products.Add(product);
@@ -92,30 +97,53 @@ namespace ForrajeriaJovitaAPI.Services
                 RetailPrice = product.RetailPrice,
                 WholesalePrice = product.WholesalePrice,
                 IsActived = product.IsActived,
-                BaseUnit = product.BaseUnit.ToString()
+                BaseUnit = product.BaseUnit.ToString(),
+                UpdateDate = product.UpdateDate
             };
         }
 
-        public async Task<bool> UpdateProductAsync(int id, ProductUpdateDto dto)
+        // =====================================
+        // UPDATE
+        // =====================================
+        public async Task<ProductResponseDto?> UpdateAsync(int id, ProductUpdateDto dto)
         {
             var product = await _context.Products.FindAsync(id);
+
             if (product == null || product.IsDeleted)
-                return false;
+                return null;
 
-            if (dto.Name != null) product.Name = dto.Name;
-            if (dto.CostPrice.HasValue) product.CostPrice = dto.CostPrice.Value;
-            if (dto.RetailPrice.HasValue) product.RetailPrice = dto.RetailPrice.Value;
-            if (dto.WholesalePrice.HasValue) product.WholesalePrice = dto.WholesalePrice.Value;
-            if (dto.IsActived.HasValue) product.IsActived = dto.IsActived.Value;
+            product.Code = dto.Code;
+            product.Name = dto.Name;
+            product.CostPrice = dto.CostPrice;
+            product.RetailPrice = dto.RetailPrice;
+            product.WholesalePrice = dto.WholesalePrice;
+            product.Image = dto.Image;
+            product.CategoryId = dto.CategoryId;
+            product.UpdateDate = DateTime.UtcNow;
 
-            product.UpdateDate = DateTime.Now;
             await _context.SaveChangesAsync();
-            return true;
+
+            return new ProductResponseDto
+            {
+                Id = product.Id,
+                Code = product.Code,
+                Name = product.Name,
+                CostPrice = product.CostPrice,
+                RetailPrice = product.RetailPrice,
+                WholesalePrice = product.WholesalePrice,
+                IsActived = product.IsActived,
+                BaseUnit = product.BaseUnit.ToString(),
+                UpdateDate = product.UpdateDate
+            };
         }
 
-        public async Task<bool> DeleteProductAsync(int id)
+        // =====================================
+        // DELETE
+        // =====================================
+        public async Task<bool> DeleteAsync(int id)
         {
             var product = await _context.Products.FindAsync(id);
+
             if (product == null || product.IsDeleted)
                 return false;
 
@@ -124,7 +152,10 @@ namespace ForrajeriaJovitaAPI.Services
             return true;
         }
 
-        public async Task<List<ProductStockDto>> GetProductStockAsync(int productId)
+        // =====================================
+        // GET STOCKS
+        // =====================================
+        public async Task<IEnumerable<ProductStockDto>> GetStocksAsync(int productId)
         {
             var stocks = await _context.ProductsStocks
                 .Where(s => s.ProductId == productId)
@@ -137,7 +168,8 @@ namespace ForrajeriaJovitaAPI.Services
                 BranchName = s.Branch.Name,
                 Quantity = s.Quantity,
                 LastUpdated = s.CreationDate
-            }).ToList();
+            });
         }
     }
 }
+
