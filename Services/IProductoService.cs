@@ -4,16 +4,12 @@ namespace ForrajeriaJovitaAPI.Services
 {
     public interface IProductoService
     {
-        Task<List<ProductResponseDto>> GetAllProductsAsync(bool? isActived = null, string? search = null);
+        Task<IEnumerable<ProductResponseDto>> GetAllAsync();
+        Task<ProductResponseDto?> GetByIdAsync(int id);
+        Task<ProductResponseDto> CreateAsync(ProductCreateDto dto);
+        Task<ProductResponseDto?> UpdateAsync(int id, ProductUpdateDto dto);
+        Task<bool> DeleteAsync(int id);
 
-        Task<ProductResponseDto?> GetProductByIdAsync(int id);
-
-        Task<ProductResponseDto> CreateProductAsync(ProductCreateDto dto);
-
-        Task<bool> UpdateProductAsync(int id, ProductUpdateDto dto);
-
-        Task<bool> DeleteProductAsync(int id);
-
-        Task<List<ProductStockDto>> GetProductStockAsync(int productId);
+        Task<IEnumerable<ProductStockDto>> GetStocksAsync(int productId);
     }
 }

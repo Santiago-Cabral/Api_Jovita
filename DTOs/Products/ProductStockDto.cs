@@ -1,7 +1,4 @@
-// ============================================
-// ProductStockDto.cs
-// ============================================
-namespace ForrajeriaJovitaAPI.DTOs
+namespace ForrajeriaJovitaAPI.DTOs.Products
 {
     public class ProductStockDto
     {

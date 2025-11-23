@@ -109,7 +109,6 @@ namespace ForrajeriaJovitaAPI.Services
             if (dto.IsActived.HasValue) product.IsActived = dto.IsActived.Value;
 
             product.UpdateDate = DateTime.Now;
-
             await _context.SaveChangesAsync();
             return true;
         }
