@@ -19,22 +19,22 @@ namespace ForrajeriaJovitaAPI.Services
         // =====================================
         public async Task<IEnumerable<ProductResponseDto>> GetAllAsync()
         {
-            var products = await _context.Products
+            return await _context.Products
                 .Where(p => !p.IsDeleted)
+                .Select(p => new ProductResponseDto
+                {
+                    Id = p.Id,
+                    Code = p.Code,
+                    Name = p.Name,
+                    RetailPrice = p.RetailPrice,
+                    WholesalePrice = p.WholesalePrice,
+                    Image = p.Image,
+                    CategoryName = p.Category != null ? p.Category.Name : null,
+                    Stock = _context.ProductsStocks
+                        .Where(s => s.ProductId == p.Id)
+                        .Sum(s => s.Quantity)
+                })
                 .ToListAsync();
-
-            return products.Select(p => new ProductResponseDto
-            {
-                Id = p.Id,
-                Code = p.Code,
-                Name = p.Name,
-                CostPrice = p.CostPrice,
-                RetailPrice = p.RetailPrice,
-                WholesalePrice = p.WholesalePrice,
-                IsActived = p.IsActived,
-                BaseUnit = p.BaseUnit.ToString(),
-                UpdateDate = p.UpdateDate
-            });
         }
 
         // =====================================
@@ -43,6 +43,7 @@ namespace ForrajeriaJovitaAPI.Services
         public async Task<ProductResponseDto?> GetByIdAsync(int id)
         {
             var product = await _context.Products
+                .Include(p => p.Category)
                 .FirstOrDefaultAsync(p => p.Id == id && !p.IsDeleted);
 
             if (product == null)
@@ -53,12 +54,13 @@ namespace ForrajeriaJovitaAPI.Services
                 Id = product.Id,
                 Code = product.Code,
                 Name = product.Name,
-                CostPrice = product.CostPrice,
                 RetailPrice = product.RetailPrice,
                 WholesalePrice = product.WholesalePrice,
-                IsActived = product.IsActived,
-                BaseUnit = product.BaseUnit.ToString(),
-                UpdateDate = product.UpdateDate
+                Image = product.Image,
+                CategoryName = product.Category?.Name,
+                Stock = await _context.ProductsStocks
+                    .Where(s => s.ProductId == id)
+                    .SumAsync(s => s.Quantity)
             };
         }
 
@@ -77,11 +79,9 @@ namespace ForrajeriaJovitaAPI.Services
                 CostPrice = dto.CostPrice,
                 RetailPrice = dto.RetailPrice,
                 WholesalePrice = dto.WholesalePrice,
-                Image = dto.Image,
-                CategoryId = dto.CategoryId,
                 BaseUnit = (BaseUnit)dto.BaseUnit,
-                IsActived = true,
                 IsDeleted = false,
+                IsActived = true,
                 CreationDate = DateTime.UtcNow
             };
 
@@ -93,12 +93,11 @@ namespace ForrajeriaJovitaAPI.Services
                 Id = product.Id,
                 Code = product.Code,
                 Name = product.Name,
-                CostPrice = product.CostPrice,
                 RetailPrice = product.RetailPrice,
                 WholesalePrice = product.WholesalePrice,
-                IsActived = product.IsActived,
-                BaseUnit = product.BaseUnit.ToString(),
-                UpdateDate = product.UpdateDate
+                Image = product.Image,
+                CategoryName = null,
+                Stock = 0
             };
         }
 
@@ -117,8 +116,7 @@ namespace ForrajeriaJovitaAPI.Services
             product.CostPrice = dto.CostPrice;
             product.RetailPrice = dto.RetailPrice;
             product.WholesalePrice = dto.WholesalePrice;
-            product.Image = dto.Image;
-            product.CategoryId = dto.CategoryId;
+            product.BaseUnit = (BaseUnit)dto.BaseUnit;
             product.UpdateDate = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
@@ -128,12 +126,13 @@ namespace ForrajeriaJovitaAPI.Services
                 Id = product.Id,
                 Code = product.Code,
                 Name = product.Name,
-                CostPrice = product.CostPrice,
                 RetailPrice = product.RetailPrice,
                 WholesalePrice = product.WholesalePrice,
-                IsActived = product.IsActived,
-                BaseUnit = product.BaseUnit.ToString(),
-                UpdateDate = product.UpdateDate
+                Image = product.Image,
+                CategoryName = null,
+                Stock = await _context.ProductsStocks
+                    .Where(s => s.ProductId == id)
+                    .SumAsync(s => s.Quantity)
             };
         }
 
@@ -172,4 +171,3 @@ namespace ForrajeriaJovitaAPI.Services
         }
     }
 }
-
