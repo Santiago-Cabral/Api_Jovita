@@ -1,0 +1,35 @@
+# Ignore bin and obj folders
+bin/
+obj/
+
+# Visual Studio files
+.vs/
+*.user
+*.suo
+*.userosscache
+
+# Build folders
+[Dd]ebug/
+[Rr]elease/
+
+# NuGet packages
+*.nupkg
+*.snupkg
+**/packages/
+
+# Logs
+*.log
+
+# Git
+.git/
+.gitignore
+
+# Docker
+Dockerfile*
+
+# OS files
+*.DS_Store
+Thumbs.db
+
+# Config local
+appsettings.Development.json
