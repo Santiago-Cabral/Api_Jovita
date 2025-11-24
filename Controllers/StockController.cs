@@ -1,8 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using ForrajeriaJovitaAPI.Data;
 using ForrajeriaJovitaAPI.DTOs.Products;
-
+using ForrajeriaJovitaAPI.DTOs;
+using ForrajeriaJovitaAPI.Data;
 using ForrajeriaJovitaAPI.Models;
 using ForrajeriaJovitaAPI.Services;
 
