@@ -1,4 +1,4 @@
-namespace ForrajeriaJovitaAPI.DTOs.Auth
+namespace ForrajeriaJovitaAPI.DTOs
 {
     public class RegisterDto
     {
