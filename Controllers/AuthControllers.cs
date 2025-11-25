@@ -1,4 +1,4 @@
-using ForrajeriaJovitaAPI.DTOs.Auth;
+using ForrajeriaJovitaAPI.DTOs;
 using ForrajeriaJovitaAPI.Services.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 
