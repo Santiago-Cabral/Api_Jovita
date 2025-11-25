@@ -1,5 +1,5 @@
 using ForrajeriaJovitaAPI.Data;
-using ForrajeriaJovitaAPI.DTOs.Auth;
+using ForrajeriaJovitaAPI.DTOs;
 using ForrajeriaJovitaAPI.Models;
 using ForrajeriaJovitaAPI.Security;
 using ForrajeriaJovitaAPI.Services.Interfaces;

@@ -1,4 +1,4 @@
-using ForrajeriaJovitaAPI.DTOs.Auth;
+using ForrajeriaJovitaAPI.DTOs;
 
 namespace ForrajeriaJovitaAPI.Services.Interfaces
 {
