@@ -31,7 +31,6 @@ builder.Services.AddScoped<IStockService, StockService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IBranchService, BranchService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
-builder.Services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();
 builder.Services.AddScoped<IClientAccountService, ClientAccountService>();
 builder.Services.AddScoped<ICategoryService, CategoryService>();
 builder.Services.AddScoped<ICheckoutService, CheckoutService>();
