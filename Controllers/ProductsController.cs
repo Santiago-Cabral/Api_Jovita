@@ -16,10 +16,11 @@ namespace ForrajeriaJovitaAPI.Controllers
             _service = service;
         }
 
-        // ===========================
-        // PUBLIC CLIENT — GET CATALOGO
-        // ===========================
+        // ============================================
+        // PUBLICO – CATALOGO
+        // ============================================
         [HttpGet]
+        [AllowAnonymous]
         public async Task<IActionResult> GetAll()
         {
             var result = await _service.GetAllAsync();
@@ -27,35 +28,35 @@ namespace ForrajeriaJovitaAPI.Controllers
         }
 
         [HttpGet("{id}")]
+        [AllowAnonymous]
         public async Task<IActionResult> GetById(int id)
         {
             var result = await _service.GetByIdAsync(id);
             if (result == null)
-                return NotFound(new { message = "Producto no encontrado." });
+                return NotFound("Producto no encontrado.");
 
             return Ok(result);
         }
 
-        // ===========================
-        // STOCK POR SUCURSAL
-        // ===========================
+        // ============================================
+        // STOCK – PUBLICO O PRIVADO? (TU DECIDES)
+        // Por ahora lo dejo PUBLICO
+        // ============================================
         [HttpGet("{id}/stock")]
+        [AllowAnonymous]
         public async Task<IActionResult> GetStock(int id)
         {
             var result = await _service.GetStocksAsync(id);
             return Ok(result);
         }
 
-        // ===========================
-        // ADMIN
-        // ===========================
+        // ============================================
+        // ADMIN – REQUIERE ROL administrador/a
+        // ============================================
         [Authorize(Roles = "administrador/a")]
         [HttpPost]
         public async Task<IActionResult> Create(ProductCreateDto dto)
         {
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
-
             var created = await _service.CreateAsync(dto);
             return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
         }
@@ -66,7 +67,7 @@ namespace ForrajeriaJovitaAPI.Controllers
         {
             var updated = await _service.UpdateAsync(id, dto);
             if (updated == null)
-                return NotFound(new { message = "Producto no encontrado." });
+                return NotFound("Producto no encontrado.");
 
             return Ok(updated);
         }
@@ -77,7 +78,7 @@ namespace ForrajeriaJovitaAPI.Controllers
         {
             var deleted = await _service.DeleteAsync(id);
             if (!deleted)
-                return NotFound(new { message = "Producto no encontrado." });
+                return NotFound("Producto no encontrado.");
 
             return NoContent();
         }
