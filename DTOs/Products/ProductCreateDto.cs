@@ -12,6 +12,8 @@ namespace ForrajeriaJovitaAPI.DTOs.Products
         public int BaseUnit { get; set; } // 1=kg, 2=unidad, 3=litro
 
         public string? Image { get; set; }
-        public int? CategoryId { get; set; }
+        public int CategoryId { get; set; }
+
+        public bool IsActived { get; set; } = true;   // <-- AGREGADO
     }
 }
