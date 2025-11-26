@@ -1,4 +1,4 @@
-using ForrajeriaJovitaAPI.Data;
+Ôªøusing ForrajeriaJovitaAPI.Data;
 using ForrajeriaJovitaAPI.DTOs;
 using ForrajeriaJovitaAPI.Models;
 using ForrajeriaJovitaAPI.Security;
@@ -13,8 +13,6 @@ namespace ForrajeriaJovitaAPI.Services
         private readonly IPasswordHasher _passwordHasher;
         private readonly IJwtTokenGenerator _jwt;
 
-        private const int ROLE_CLIENTE = 3;
-
         public AuthService(
             ForrajeriaContext context,
             IPasswordHasher passwordHasher,
@@ -25,13 +23,51 @@ namespace ForrajeriaJovitaAPI.Services
             _jwt = jwt;
         }
 
+        private string MapRole(int roleId)
+        {
+            return roleId switch
+            {
+                1 => "administrador/a",
+                2 => "empleado",
+                3 => "cliente",
+                _ => "cliente"
+            };
+        }
+
+        public async Task<AuthResponseDto> LoginAsync(LoginDto dto)
+        {
+            var user = await _context.Users
+                .FirstOrDefaultAsync(u =>
+                    u.UserName == dto.Email && !u.IsDeleted && u.IsActived);
+
+            if (user == null)
+                throw new Exception("Credenciales inv√°lidas.");
+
+            if (!_passwordHasher.Verify(dto.Password, user.Password))
+                throw new Exception("Credenciales inv√°lidas.");
+
+            // Convertir RoleId ‚Üí Nombre de rol que usa Authorize
+            var roleName = MapRole(user.RoleId);
+
+            var token = _jwt.GenerateToken(user, roleName);
+
+            return new AuthResponseDto
+            {
+                Token = token,
+                UserId = user.Id,
+                Role = roleName,
+                FullName = $"{user.Name} {user.LastName}",
+                Email = user.UserName
+            };
+        }
+
         public async Task<AuthResponseDto> RegisterAsync(RegisterDto dto)
         {
             var exists = await _context.Users
                 .AnyAsync(u => u.UserName == dto.Email && !u.IsDeleted);
 
             if (exists)
-                throw new Exception("El email ya est· registrado.");
+                throw new Exception("El email ya est√° registrado.");
 
             var user = new User
             {
@@ -42,7 +78,7 @@ namespace ForrajeriaJovitaAPI.Services
                 CreationDate = DateTime.UtcNow,
                 IsActived = true,
                 IsDeleted = false,
-                RoleId = ROLE_CLIENTE
+                RoleId = 3 // cliente
             };
 
             _context.Users.Add(user);
@@ -55,32 +91,6 @@ namespace ForrajeriaJovitaAPI.Services
                 Token = token,
                 UserId = user.Id,
                 Role = "cliente",
-                FullName = $"{user.Name} {user.LastName}",
-                Email = user.UserName
-            };
-        }
-
-        public async Task<AuthResponseDto> LoginAsync(LoginDto dto)
-        {
-            var user = await _context.Users
-                .Include(u => u.Role)
-                .FirstOrDefaultAsync(u => u.UserName == dto.Email && !u.IsDeleted && u.IsActived);
-
-            if (user == null)
-                throw new Exception("Credenciales inv·lidas.");
-
-            if (!_passwordHasher.Verify(dto.Password, user.Password))
-                throw new Exception("Credenciales inv·lidas.");
-
-            var roleName = user.Role?.Name ?? "cliente";
-
-            var token = _jwt.GenerateToken(user, roleName);
-
-            return new AuthResponseDto
-            {
-                Token = token,
-                UserId = user.Id,
-                Role = roleName,
                 FullName = $"{user.Name} {user.LastName}",
                 Email = user.UserName
             };
