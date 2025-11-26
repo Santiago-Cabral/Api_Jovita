@@ -17,7 +17,7 @@ namespace ForrajeriaJovitaAPI.Controllers
         }
 
         // ===========================
-        // CLIENTE - CATÁLOGO
+        // PUBLIC CLIENT — GET CATALOGO
         // ===========================
         [HttpGet]
         public async Task<IActionResult> GetAll()
@@ -31,7 +31,7 @@ namespace ForrajeriaJovitaAPI.Controllers
         {
             var result = await _service.GetByIdAsync(id);
             if (result == null)
-                return NotFound("Producto no encontrado.");
+                return NotFound(new { message = "Producto no encontrado." });
 
             return Ok(result);
         }
@@ -53,6 +53,9 @@ namespace ForrajeriaJovitaAPI.Controllers
         [HttpPost]
         public async Task<IActionResult> Create(ProductCreateDto dto)
         {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
             var created = await _service.CreateAsync(dto);
             return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
         }
@@ -63,7 +66,7 @@ namespace ForrajeriaJovitaAPI.Controllers
         {
             var updated = await _service.UpdateAsync(id, dto);
             if (updated == null)
-                return NotFound("Producto no encontrado.");
+                return NotFound(new { message = "Producto no encontrado." });
 
             return Ok(updated);
         }
@@ -74,7 +77,7 @@ namespace ForrajeriaJovitaAPI.Controllers
         {
             var deleted = await _service.DeleteAsync(id);
             if (!deleted)
-                return NotFound("Producto no encontrado.");
+                return NotFound(new { message = "Producto no encontrado." });
 
             return NoContent();
         }

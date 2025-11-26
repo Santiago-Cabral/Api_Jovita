@@ -14,9 +14,10 @@ namespace ForrajeriaJovitaAPI.DTOs.Products
         public int BaseUnit { get; set; }
 
         public bool IsActived { get; set; }
-        public DateTime UpdateDate { get; set; }
+        public DateTime? UpdateDate { get; set; }
+        public DateTime CreationDate { get; set; }
 
-        public int CategoryId { get; set; }
+        public int? CategoryId { get; set; }
         public string? CategoryName { get; set; }
 
         public string? Image { get; set; }

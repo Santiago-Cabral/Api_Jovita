@@ -15,7 +15,7 @@ namespace ForrajeriaJovitaAPI.Services
         }
 
         // =====================================
-        // GET ALL
+        // GET ALL (ASYNC)
         // =====================================
         public async Task<IEnumerable<ProductResponseDto>> GetAllAsync()
         {
@@ -32,14 +32,20 @@ namespace ForrajeriaJovitaAPI.Services
                 Name = p.Name,
                 RetailPrice = p.RetailPrice,
                 WholesalePrice = p.WholesalePrice,
+                BaseUnit = (int)p.BaseUnit,
+                IsActived = p.IsActived,
+                UpdateDate = p.UpdateDate ?? DateTime.MinValue,
+
                 Image = p.Image,
+                CategoryId = p.CategoryId ?? 0,
                 CategoryName = p.Category?.Name,
+
                 Stock = p.ProductsStocks.Sum(s => (int)s.Quantity)
             });
         }
 
         // =====================================
-        // GET BY ID
+        // GET BY ID (ASYNC)
         // =====================================
         public async Task<ProductResponseDto?> GetByIdAsync(int id)
         {
@@ -58,14 +64,20 @@ namespace ForrajeriaJovitaAPI.Services
                 Name = product.Name,
                 RetailPrice = product.RetailPrice,
                 WholesalePrice = product.WholesalePrice,
+                BaseUnit = (int)product.BaseUnit,
+                IsActived = product.IsActived,
+                UpdateDate = product.UpdateDate ?? DateTime.MinValue,
+
                 Image = product.Image,
+                CategoryId = product.CategoryId ?? 0,
                 CategoryName = product.Category?.Name,
+
                 Stock = product.ProductsStocks.Sum(s => (int)s.Quantity)
             };
         }
 
         // =====================================
-        // CREATE
+        // CREATE (ASYNC)
         // =====================================
         public async Task<ProductResponseDto> CreateAsync(ProductCreateDto dto)
         {
@@ -80,7 +92,10 @@ namespace ForrajeriaJovitaAPI.Services
                 RetailPrice = dto.RetailPrice,
                 WholesalePrice = dto.WholesalePrice,
                 BaseUnit = (BaseUnit)dto.BaseUnit,
-                IsActived = true,
+                Image = dto.Image,
+                CategoryId = dto.CategoryId,
+
+                IsActived = dto.IsActived,
                 IsDeleted = false,
                 CreationDate = DateTime.UtcNow
             };
@@ -88,21 +103,12 @@ namespace ForrajeriaJovitaAPI.Services
             _context.Products.Add(product);
             await _context.SaveChangesAsync();
 
-            return new ProductResponseDto
-            {
-                Id = product.Id,
-                Code = product.Code,
-                Name = product.Name,
-                RetailPrice = product.RetailPrice,
-                WholesalePrice = product.WholesalePrice,
-                Image = product.Image,
-                CategoryName = null,
-                Stock = 0
-            };
+            return await GetByIdAsync(product.Id)
+                   ?? throw new Exception("Error al crear producto");
         }
 
         // =====================================
-        // UPDATE
+        // UPDATE (ASYNC)
         // =====================================
         public async Task<ProductResponseDto?> UpdateAsync(int id, ProductUpdateDto dto)
         {
@@ -118,6 +124,10 @@ namespace ForrajeriaJovitaAPI.Services
             product.WholesalePrice = dto.WholesalePrice;
             product.BaseUnit = (BaseUnit)dto.BaseUnit;
 
+            product.Image = dto.Image;
+            product.CategoryId = dto.CategoryId;
+
+            product.IsActived = dto.IsActived;
             product.UpdateDate = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
@@ -126,7 +136,7 @@ namespace ForrajeriaJovitaAPI.Services
         }
 
         // =====================================
-        // DELETE
+        // DELETE (ASYNC)
         // =====================================
         public async Task<bool> DeleteAsync(int id)
         {
@@ -141,7 +151,7 @@ namespace ForrajeriaJovitaAPI.Services
         }
 
         // =====================================
-        // GET STOCKS
+        // GET STOCKS (ASYNC)
         // =====================================
         public async Task<IEnumerable<ProductStockDto>> GetStocksAsync(int productId)
         {
