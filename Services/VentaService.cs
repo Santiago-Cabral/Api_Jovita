@@ -63,6 +63,31 @@ namespace ForrajeriaJovitaAPI.Services
                 }).ToList()
             });
         }
+        public async Task<SaleDto?> UpdateSaleAsync(UpdateSaleDto dto)
+        {
+            var sale = await _context.Sales
+                .Include(s => s.SellerUser)
+                .Include(s => s.SalesItems).ThenInclude(i => i.Product)
+                .Include(s => s.SalesPayments)
+                .FirstOrDefaultAsync(s => s.Id == dto.Id);
+
+            if (sale == null)
+                return null;
+
+            // Si querés agregar Status a tu modelo, solo debes incluirlo aquí:
+            if (dto.Status.HasValue)
+                sale.Status = dto.Status.Value;
+
+            if (!string.IsNullOrWhiteSpace(dto.Note))
+                sale.Note = dto.Note;
+
+            sale.UpdateDate = DateTime.Now;
+
+            await _context.SaveChangesAsync();
+
+            return await GetSaleByIdAsync(sale.Id);
+        }
+
 
         public async Task<SaleDto?> GetSaleByIdAsync(int id)
         {

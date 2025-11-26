@@ -1,4 +1,4 @@
-// Services/IVentaService.cs
+﻿// Services/IVentaService.cs
 using ForrajeriaJovitaAPI.DTOs;
 
 namespace ForrajeriaJovitaAPI.Services
@@ -9,5 +9,9 @@ namespace ForrajeriaJovitaAPI.Services
         Task<SaleDto?> GetSaleByIdAsync(int id);
         Task<SaleDto> CreateSaleAsync(CreateSaleDto dto);
         Task<object> GetTodaySalesSummaryAsync();
+
+        // 👉 NUEVO
+        Task<SaleDto?> UpdateSaleAsync(UpdateSaleDto dto);
     }
+
 }
