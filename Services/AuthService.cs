@@ -23,7 +23,8 @@ namespace ForrajeriaJovitaAPI.Services
             _jwt = jwt;
         }
 
-        private string MapRole(int roleId)
+        // 🔥 Convertimos RoleId → Rol que usa Authorize
+        private string MapRole(int? roleId)
         {
             return roleId switch
             {
@@ -38,7 +39,9 @@ namespace ForrajeriaJovitaAPI.Services
         {
             var user = await _context.Users
                 .FirstOrDefaultAsync(u =>
-                    u.UserName == dto.Email && !u.IsDeleted && u.IsActived);
+                    u.UserName == dto.Email &&
+                    !u.IsDeleted &&
+                    u.IsActived);
 
             if (user == null)
                 throw new Exception("Credenciales inválidas.");
@@ -46,7 +49,7 @@ namespace ForrajeriaJovitaAPI.Services
             if (!_passwordHasher.Verify(dto.Password, user.Password))
                 throw new Exception("Credenciales inválidas.");
 
-            // Convertir RoleId → Nombre de rol que usa Authorize
+            // 🔥 MapRole recibe int? → int seguro
             var roleName = MapRole(user.RoleId);
 
             var token = _jwt.GenerateToken(user, roleName);
@@ -97,3 +100,4 @@ namespace ForrajeriaJovitaAPI.Services
         }
     }
 }
+
