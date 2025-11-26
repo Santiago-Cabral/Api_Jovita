@@ -15,7 +15,7 @@ namespace ForrajeriaJovitaAPI.Services
         }
 
         // =====================================
-        // GET ALL (ASYNC)
+        // GET ALL
         // =====================================
         public async Task<IEnumerable<ProductResponseDto>> GetAllAsync()
         {
@@ -30,22 +30,26 @@ namespace ForrajeriaJovitaAPI.Services
                 Id = p.Id,
                 Code = p.Code,
                 Name = p.Name,
+
+                CostPrice = p.CostPrice,
                 RetailPrice = p.RetailPrice,
                 WholesalePrice = p.WholesalePrice,
+
                 BaseUnit = (int)p.BaseUnit,
                 IsActived = p.IsActived,
                 UpdateDate = p.UpdateDate ?? DateTime.MinValue,
 
-                Image = p.Image,
                 CategoryId = p.CategoryId ?? 0,
                 CategoryName = p.Category?.Name,
+
+                Image = p.Image,
 
                 Stock = p.ProductsStocks.Sum(s => (int)s.Quantity)
             });
         }
 
         // =====================================
-        // GET BY ID (ASYNC)
+        // GET BY ID
         // =====================================
         public async Task<ProductResponseDto?> GetByIdAsync(int id)
         {
@@ -62,22 +66,26 @@ namespace ForrajeriaJovitaAPI.Services
                 Id = product.Id,
                 Code = product.Code,
                 Name = product.Name,
+
+                CostPrice = product.CostPrice,
                 RetailPrice = product.RetailPrice,
                 WholesalePrice = product.WholesalePrice,
+
                 BaseUnit = (int)product.BaseUnit,
                 IsActived = product.IsActived,
                 UpdateDate = product.UpdateDate ?? DateTime.MinValue,
 
-                Image = product.Image,
                 CategoryId = product.CategoryId ?? 0,
                 CategoryName = product.Category?.Name,
+
+                Image = product.Image,
 
                 Stock = product.ProductsStocks.Sum(s => (int)s.Quantity)
             };
         }
 
         // =====================================
-        // CREATE (ASYNC)
+        // CREATE
         // =====================================
         public async Task<ProductResponseDto> CreateAsync(ProductCreateDto dto)
         {
@@ -91,24 +99,25 @@ namespace ForrajeriaJovitaAPI.Services
                 CostPrice = dto.CostPrice,
                 RetailPrice = dto.RetailPrice,
                 WholesalePrice = dto.WholesalePrice,
+
                 BaseUnit = (BaseUnit)dto.BaseUnit,
-                Image = dto.Image,
-                CategoryId = dto.CategoryId,
 
                 IsActived = dto.IsActived,
                 IsDeleted = false,
-                CreationDate = DateTime.UtcNow
+                CreationDate = DateTime.UtcNow,
+
+                Image = dto.Image,
+                CategoryId = dto.CategoryId
             };
 
             _context.Products.Add(product);
             await _context.SaveChangesAsync();
 
-            return await GetByIdAsync(product.Id)
-                   ?? throw new Exception("Error al crear producto");
+            return await GetByIdAsync(product.Id);
         }
 
         // =====================================
-        // UPDATE (ASYNC)
+        // UPDATE
         // =====================================
         public async Task<ProductResponseDto?> UpdateAsync(int id, ProductUpdateDto dto)
         {
@@ -122,6 +131,7 @@ namespace ForrajeriaJovitaAPI.Services
             product.CostPrice = dto.CostPrice;
             product.RetailPrice = dto.RetailPrice;
             product.WholesalePrice = dto.WholesalePrice;
+
             product.BaseUnit = (BaseUnit)dto.BaseUnit;
 
             product.Image = dto.Image;
@@ -136,7 +146,7 @@ namespace ForrajeriaJovitaAPI.Services
         }
 
         // =====================================
-        // DELETE (ASYNC)
+        // DELETE
         // =====================================
         public async Task<bool> DeleteAsync(int id)
         {
@@ -151,7 +161,7 @@ namespace ForrajeriaJovitaAPI.Services
         }
 
         // =====================================
-        // GET STOCKS (ASYNC)
+        // GET STOCKS
         // =====================================
         public async Task<IEnumerable<ProductStockDto>> GetStocksAsync(int productId)
         {
