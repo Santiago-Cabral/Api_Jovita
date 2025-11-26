@@ -16,19 +16,19 @@ namespace ForrajeriaJovitaAPI.Controllers
             _service = service;
         }
 
-        // ============================================
-        // PUBLICO – CATALOGO
-        // ============================================
-        [HttpGet]
+        // ===========================
+        // CLIENTE - CATÁLOGO (PÚBLICO)
+        // ===========================
         [AllowAnonymous]
+        [HttpGet]
         public async Task<IActionResult> GetAll()
         {
             var result = await _service.GetAllAsync();
             return Ok(result);
         }
 
-        [HttpGet("{id}")]
         [AllowAnonymous]
+        [HttpGet("{id}")]
         public async Task<IActionResult> GetById(int id)
         {
             var result = await _service.GetByIdAsync(id);
@@ -38,21 +38,20 @@ namespace ForrajeriaJovitaAPI.Controllers
             return Ok(result);
         }
 
-        // ============================================
-        // STOCK – PUBLICO O PRIVADO? (TU DECIDES)
-        // Por ahora lo dejo PUBLICO
-        // ============================================
-        [HttpGet("{id}/stock")]
+        // ===========================
+        // STOCK POR SUCURSAL (PÚBLICO)
+        // ===========================
         [AllowAnonymous]
+        [HttpGet("{id}/stock")]
         public async Task<IActionResult> GetStock(int id)
         {
             var result = await _service.GetStocksAsync(id);
             return Ok(result);
         }
 
-        // ============================================
-        // ADMIN – REQUIERE ROL administrador/a
-        // ============================================
+        // ===========================
+        // ADMIN
+        // ===========================
         [Authorize(Roles = "administrador/a")]
         [HttpPost]
         public async Task<IActionResult> Create(ProductCreateDto dto)
@@ -84,3 +83,4 @@ namespace ForrajeriaJovitaAPI.Controllers
         }
     }
 }
+

@@ -9,11 +9,11 @@ namespace ForrajeriaJovitaAPI.DTOs.Products
         public decimal RetailPrice { get; set; }
         public decimal WholesalePrice { get; set; }
 
-        public int BaseUnit { get; set; } // 1=kg, 2=unidad, 3=litro
+        public int BaseUnit { get; set; }
 
         public string? Image { get; set; }
         public int CategoryId { get; set; }
 
-        public bool IsActived { get; set; } = true;   // <-- AGREGADO
+        public bool IsActived { get; set; } = true;
     }
 }
