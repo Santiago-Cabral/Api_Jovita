@@ -20,7 +20,6 @@ builder.Services.AddScoped<IStockService, StockService>();
 builder.Services.AddScoped<IClientService, ClientService>();
 builder.Services.AddScoped<IBranchService, BranchService>();
 builder.Services.AddScoped<ICategoryService, CategoryService>();
-builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<ICheckoutService, CheckoutService>();
 builder.Services.AddScoped<IClientAccountService, ClientAccountService>();
 
