@@ -211,7 +211,7 @@ namespace ForrajeriaJovitaAPI.Services
                 TotalSales = sales.Count,
                 TotalAmount = sales.Sum(s => s.Total),
                 TotalDiscount = sales.Sum(s => s.DiscountTotal),
-                AverageTicket = sales.Any() ? sales.Average(s => s.Total) : 0
+                AverageTicket = sales.Any() ? sales.Average(s => s.Total) : 0m
             };
         }
 
