@@ -69,6 +69,7 @@ namespace ForrajeriaJovitaAPI.Services
 
                 // STOCK DECIMAL ✔
                 Stock = product.ProductsStocks.Sum(s => s.Quantity)
+
             };
         }
 
