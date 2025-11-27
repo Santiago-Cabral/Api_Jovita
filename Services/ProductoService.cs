@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using ForrajeriaJovitaAPI.Data;
 using ForrajeriaJovitaAPI.Models;
 using ForrajeriaJovitaAPI.DTOs.Products;
@@ -36,7 +36,9 @@ namespace ForrajeriaJovitaAPI.Services
                 CategoryId = p.CategoryId ?? 0,
                 CategoryName = p.Category?.Name,
                 Image = p.Image,
-                Stock = p.ProductsStocks.Sum(s => (int)s.Quantity)
+
+                // STOCK DECIMAL ✔
+                Stock = p.ProductsStocks.Sum(s => s.Quantity)
             });
         }
 
@@ -64,7 +66,9 @@ namespace ForrajeriaJovitaAPI.Services
                 CategoryId = product.CategoryId ?? 0,
                 CategoryName = product.Category?.Name,
                 Image = product.Image,
-                Stock = product.ProductsStocks.Sum(s => (int)s.Quantity)
+
+                // STOCK DECIMAL ✔
+                Stock = product.ProductsStocks.Sum(s => s.Quantity)
             };
         }
 
@@ -144,4 +148,3 @@ namespace ForrajeriaJovitaAPI.Services
         }
     }
 }
-

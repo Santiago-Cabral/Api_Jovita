@@ -21,6 +21,7 @@ namespace ForrajeriaJovitaAPI.DTOs.Products
 
         public string? Image { get; set; }
 
-        public int Stock { get; set; }
+        public decimal Stock { get; set; }
+
     }
 }

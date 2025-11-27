@@ -1,16 +1,16 @@
-// Models/ProductStock.cs
+﻿// Models/ProductStock.cs
 namespace ForrajeriaJovitaAPI.Models
 {
-    public class ProductStock
+    public class ProductsStock
     {
         public int Id { get; set; }
+
         public int ProductId { get; set; }
         public int BranchId { get; set; }
-        public decimal Quantity { get; set; }
-        public DateTime CreationDate { get; set; } = DateTime.Now;
 
-        // Navegaci�n
-        public Product Product { get; set; } = null!;
-        public Branch Branch { get; set; } = null!;
+        public decimal Quantity { get; set; } // <── debe ser DECIMAL
+
+        public DateTime CreationDate { get; set; } = DateTime.Now;
     }
+
 }
