@@ -4,10 +4,9 @@ namespace ForrajeriaJovitaAPI.Services
 {
     public interface IVentaService
     {
-        Task<IEnumerable<SaleDto>> GetAllSalesAsync(DateTime? startDate = null, DateTime? endDate = null, int? sellerId = null);
+        Task<IEnumerable<SaleDto>> GetAllSalesAsync(DateTime? start, DateTime? end, int? sellerId);
         Task<SaleDto?> GetSaleByIdAsync(int id);
         Task<SaleDto> CreateSaleAsync(CreateSaleDto dto);
-        Task<SaleDto?> UpdateSaleAsync(UpdateSaleDto dto);
         Task<object> GetTodaySalesSummaryAsync();
     }
 }

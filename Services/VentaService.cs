@@ -14,9 +14,9 @@ namespace ForrajeriaJovitaAPI.Services
             _context = context;
         }
 
-        // ==========================================================
+        // ============================================================
         // GET ALL SALES
-        // ==========================================================
+        // ============================================================
         public async Task<IEnumerable<SaleDto>> GetAllSalesAsync(
             DateTime? startDate = null,
             DateTime? endDate = null,
@@ -44,9 +44,9 @@ namespace ForrajeriaJovitaAPI.Services
             return sales.Select(MapSaleToDto);
         }
 
-        // ==========================================================
+        // ============================================================
         // GET SALE BY ID
-        // ==========================================================
+        // ============================================================
         public async Task<SaleDto?> GetSaleByIdAsync(int id)
         {
             var sale = await _context.Sales
@@ -58,144 +58,143 @@ namespace ForrajeriaJovitaAPI.Services
             return sale == null ? null : MapSaleToDto(sale);
         }
 
-        // ==========================================================
+        // ============================================================
         // CREATE SALE
-        // ==========================================================
+        // ============================================================
         public async Task<SaleDto> CreateSaleAsync(CreateSaleDto dto)
         {
-            using var trx = await _context.Database.BeginTransactionAsync();
+            using var transaction = await _context.Database.BeginTransactionAsync();
 
             try
             {
-                var seller = await _context.Users.FindAsync(dto.SellerUserId)
-                    ?? throw new Exception("Vendedor no encontrado.");
+                // ------- Validar vendedor -------
+                var seller = await _context.Users.FindAsync(dto.SellerUserId);
+                if (seller == null)
+                    throw new InvalidOperationException("Vendedor no encontrado.");
 
-                var cashSession = await _context.CashSessions.FindAsync(dto.CashSessionId)
-                    ?? throw new Exception("Sesión de caja no encontrada.");
+                // ------- Validar sesión de caja -------
+                var cashSession = await _context.CashSessions.FindAsync(dto.CashSessionId);
+                if (cashSession == null)
+                    throw new InvalidOperationException("Sesión de caja no encontrada.");
 
+                // ------- Calcular totales -------
                 decimal subtotal = 0;
-                decimal discountTotal = 0;
+                decimal totalDiscount = 0;
 
                 foreach (var item in dto.Items)
                 {
-                    subtotal += item.UnitPrice * item.Quantity;
-                    discountTotal += item.Discount;
+                    subtotal += item.Quantity * item.UnitPrice;
+                    totalDiscount += item.Discount;
                 }
 
-                decimal total = subtotal - discountTotal;
+                decimal total = subtotal - totalDiscount;
 
-                // ==================================================
-                // VALIDAR PAGO
-                // ==================================================
+                // ------- Validar pagos -------
                 decimal totalPayments = dto.Payments.Sum(p => p.Amount);
-                if (totalPayments < total)
-                    throw new Exception("Los pagos no cubren el total.");
 
-                // ==================================================
-                // CREAR CASH MOVEMENT
-                // ==================================================
-                var movement = new CashMovement
+                if (totalPayments < total)
+                    throw new InvalidOperationException("Los pagos no cubren el total de la venta.");
+
+                // ------- Registrar movimiento de caja -------
+                var cashMovement = new CashMovement
                 {
                     CashSessionId = dto.CashSessionId,
-                    Amount = total,
                     Type = CashMovementType.Sale,
-                    Description = "Venta",
+                    Amount = total,
+                    Description = "Venta realizada",
                     CreationDate = DateTime.Now
                 };
-
-                _context.CashMovements.Add(movement);
+                _context.CashMovements.Add(cashMovement);
                 await _context.SaveChangesAsync();
 
-                // ==================================================
-                // CREAR VENTA
-                // ==================================================
+                // ------- Crear venta -------
                 var sale = new Sale
                 {
-                    CashMovementId = movement.Id,
+                    CashMovementId = cashMovement.Id,
+                    SoldAt = DateTime.Now,
                     SellerUserId = dto.SellerUserId,
                     Subtotal = subtotal,
-                    DiscountTotal = discountTotal,
+                    DiscountTotal = totalDiscount,
                     Total = total,
-                    SoldAt = DateTime.Now,
-
-                    DeliveryType = dto.DeliveryType,
-                    DeliveryAddress = dto.DeliveryAddress,
-                    DeliveryCost = dto.DeliveryCost,
-                    DeliveryNote = dto.DeliveryNote,
-
-                    PaymentStatus = 1, // Pagado (ya que pagaron todo)
-                    CreationDate = DateTime.Now
+                    CreationDate = DateTime.Now,
+                    DeliveryType = null,
+                    DeliveryAddress = null,
+                    DeliveryCost = null,
+                    DeliveryNote = null,
+                    PaymentStatus = 1 // pagado (1 = pagado, 0 = pendiente)
                 };
 
                 _context.Sales.Add(sale);
                 await _context.SaveChangesAsync();
 
-                // ==================================================
-                // ITEMS + RESTAR STOCK
-                // ==================================================
-                foreach (var itemDto in dto.Items)
+                // ------- Crear ítems y actualizar stock -------
+                foreach (var item in dto.Items)
                 {
-                    var product = await _context.Products.FindAsync(itemDto.ProductId)
-                        ?? throw new Exception($"Producto {itemDto.ProductId} no encontrado.");
+                    var product = await _context.Products.FindAsync(item.ProductId);
+                    if (product == null)
+                        throw new InvalidOperationException($"Producto {item.ProductId} no encontrado.");
 
-                    _context.SalesItems.Add(new SaleItem
+                    var saleItem = new SaleItem
                     {
                         SaleId = sale.Id,
-                        ProductId = itemDto.ProductId,
-                        Quantity = itemDto.Quantity,
-                        UnitPrice = itemDto.UnitPrice,
-                        Discount = itemDto.Discount,
-                        ProductUnitId = itemDto.ProductUnitId,
+                        ProductId = item.ProductId,
+                        Quantity = item.Quantity,
+                        UnitPrice = item.UnitPrice,
+                        Discount = item.Discount,
+                        ProductUnitId = item.ProductUnitId,
                         ConversionToBase = 1,
-                        DeductedBaseQuantity = itemDto.Quantity,
+                        DeductedBaseQuantity = item.Quantity,
                         CreationDate = DateTime.Now
-                    });
+                    };
 
-                    // RESTAR STOCK
+                    _context.SalesItems.Add(saleItem);
+
+                    // Actualizar stock
                     var stock = await _context.ProductsStocks
                         .FirstOrDefaultAsync(s =>
-                            s.ProductId == itemDto.ProductId &&
+                            s.ProductId == item.ProductId &&
                             s.BranchId == cashSession.BranchId);
 
                     if (stock == null)
-                        throw new Exception($"No hay stock del producto {product.Name}.");
+                        throw new InvalidOperationException($"No existe stock para el producto {product.Name} en esta sucursal.");
 
-                    stock.Quantity -= itemDto.Quantity;
+                    stock.Quantity -= item.Quantity;
 
                     if (stock.Quantity < 0)
-                        throw new Exception($"Stock insuficiente de {product.Name}.");
+                        throw new InvalidOperationException($"Stock insuficiente para {product.Name}.");
                 }
 
-                // ==================================================
-                // PAGOS
-                // ==================================================
+                // ------- Registrar pagos -------
                 foreach (var pay in dto.Payments)
                 {
-                    _context.SalesPayments.Add(new SalePayment
+                    var salePayment = new SalePayment
                     {
                         SaleId = sale.Id,
                         Method = (PaymentMethod)pay.Method,
                         Amount = pay.Amount,
                         Reference = pay.Reference,
                         CreationDate = DateTime.Now
-                    });
+                    };
+
+                    _context.SalesPayments.Add(salePayment);
                 }
 
                 await _context.SaveChangesAsync();
-                await trx.CommitAsync();
+                await transaction.CommitAsync();
 
+                // ------- Devolver venta completa -------
                 return (await GetSaleByIdAsync(sale.Id))!;
             }
             catch
             {
-                await trx.RollbackAsync();
+                await transaction.RollbackAsync();
                 throw;
             }
         }
 
-        // ==========================================================
-        // SUMMARY TODAY
-        // ==========================================================
+        // ============================================================
+        // RESUMEN DEL DÍA
+        // ============================================================
         public async Task<object> GetTodaySalesSummaryAsync()
         {
             var today = DateTime.Today;
@@ -209,15 +208,15 @@ namespace ForrajeriaJovitaAPI.Services
             {
                 Date = today,
                 TotalSales = sales.Count,
-                TotalAmount = sales.Sum(x => x.Total),
-                TotalDiscount = sales.Sum(x => x.DiscountTotal),
-                Average = sales.Any() ? sales.Average(x => x.Total) : 0
+                TotalAmount = sales.Sum(s => s.Total),
+                TotalDiscount = sales.Sum(s => s.DiscountTotal),
+                AverageTicket = sales.Any() ? sales.Average(s => s.Total) : 0
             };
         }
 
-        // ==========================================================
-        // MAP SALE TO DTO
-        // ==========================================================
+        // ============================================================
+        // MAP: Sale -> SaleDto
+        // ============================================================
         private SaleDto MapSaleToDto(Sale s)
         {
             return new SaleDto
@@ -228,12 +227,6 @@ namespace ForrajeriaJovitaAPI.Services
                 Subtotal = s.Subtotal,
                 DiscountTotal = s.DiscountTotal,
                 Total = s.Total,
-
-                DeliveryType = s.DeliveryType,
-                DeliveryAddress = s.DeliveryAddress,
-                DeliveryCost = s.DeliveryCost,
-                DeliveryNote = s.DeliveryNote,
-                PaymentStatus = s.PaymentStatus,
 
                 Items = s.SalesItems.Select(i => new SaleItemDto
                 {
