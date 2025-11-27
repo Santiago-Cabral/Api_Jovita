@@ -1,9 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using ForrajeriaJovitaAPI.Data;
-using ForrajeriaJovitaAPI.DTOs;
-using ForrajeriaJovitaAPI.Models;
 using ForrajeriaJovitaAPI.Services;
+using ForrajeriaJovitaAPI.DTOs;
 
 namespace ForrajeriaJovitaAPI.Controllers
 {
@@ -20,11 +17,11 @@ namespace ForrajeriaJovitaAPI.Controllers
             _logger = logger;
         }
 
-        // ============================================================
-        // GET: Todas las ventas (con filtros opcionales)
-        // ============================================================
+        // ==========================================================
+        // GET: api/sales
+        // ==========================================================
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<SaleDto>>> GetSales(
+        public async Task<IActionResult> GetSales(
             [FromQuery] DateTime? startDate = null,
             [FromQuery] DateTime? endDate = null,
             [FromQuery] int? sellerId = null)
@@ -37,20 +34,23 @@ namespace ForrajeriaJovitaAPI.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error al obtener ventas");
-                return StatusCode(500, new { message = "Error al obtener ventas", error = ex.Message });
+                return StatusCode(500, new
+                {
+                    message = "Error al obtener ventas",
+                    error = ex.Message
+                });
             }
         }
 
-        // ============================================================
-        // GET: Venta por ID
-        // ============================================================
+        // ==========================================================
+        // GET: api/sales/{id}
+        // ==========================================================
         [HttpGet("{id}")]
-        public async Task<ActionResult<SaleDto>> GetSale(int id)
+        public async Task<IActionResult> GetSaleById(int id)
         {
             try
             {
                 var sale = await _ventaService.GetSaleByIdAsync(id);
-
                 if (sale == null)
                     return NotFound(new { message = "Venta no encontrada" });
 
@@ -58,70 +58,46 @@ namespace ForrajeriaJovitaAPI.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error al obtener venta");
-                return StatusCode(500, new { message = "Error al obtener venta", error = ex.Message });
+                _logger.LogError(ex, $"Error al obtener venta #{id}");
+                return StatusCode(500, new { message = "Error interno", error = ex.Message });
             }
         }
 
-        // ============================================================
-        // POST: Crear venta
-        // ============================================================
+        // ==========================================================
+        // POST: api/sales
+        // ==========================================================
         [HttpPost]
-        public async Task<ActionResult<SaleDto>> CreateSale(CreateSaleDto dto)
+        public async Task<IActionResult> CreateSale([FromBody] CreateSaleDto dto)
         {
             try
             {
-                if (dto.Items == null || !dto.Items.Any())
-                    return BadRequest(new { message = "La venta debe tener al menos un producto" });
+                if (dto.Items == null || dto.Items.Count == 0)
+                    return BadRequest(new { message = "La venta debe tener productos." });
 
-                if (dto.Payments == null || !dto.Payments.Any())
-                    return BadRequest(new { message = "La venta debe tener al menos un pago" });
+                if (dto.Payments == null || dto.Payments.Count == 0)
+                    return BadRequest(new { message = "La venta debe tener al menos un pago." });
 
                 var sale = await _ventaService.CreateSaleAsync(dto);
 
-                return CreatedAtAction(nameof(GetSale), new { id = sale.Id }, sale);
-            }
-            catch (InvalidOperationException ex)
-            {
-                return BadRequest(new { message = ex.Message });
+                return CreatedAtAction(nameof(GetSaleById), new { id = sale.Id }, sale);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error al crear venta");
-                return StatusCode(500, new { message = "Error al crear venta", error = ex.Message });
+                _logger.LogError(ex, "Error creando venta");
+
+                return BadRequest(new
+                {
+                    message = "Error al crear venta",
+                    error = ex.Message
+                });
             }
         }
 
-        // ============================================================
-        // PUT: Actualizar venta (Estado, Nota)
-        // ============================================================
-        [HttpPut("{id}")]
-        public async Task<ActionResult<SaleDto>> UpdateSale(int id, UpdateSaleDto dto)
-        {
-            try
-            {
-                if (id != dto.Id)
-                    return BadRequest(new { message = "El ID no coincide con el body." });
-
-                var updated = await _ventaService.UpdateSaleAsync(dto);
-
-                if (updated == null)
-                    return NotFound(new { message = "Venta no encontrada" });
-
-                return Ok(updated);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error al actualizar venta");
-                return StatusCode(500, new { message = "Error al actualizar venta", error = ex.Message });
-            }
-        }
-
-        // ============================================================
-        // GET: Resumen de ventas del día
-        // ============================================================
+        // ==========================================================
+        // GET: api/sales/today
+        // ==========================================================
         [HttpGet("today")]
-        public async Task<ActionResult<object>> GetTodaySales()
+        public async Task<IActionResult> GetTodaySummary()
         {
             try
             {
@@ -131,15 +107,15 @@ namespace ForrajeriaJovitaAPI.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error al obtener resumen diario");
-                return StatusCode(500, new { message = "Error al obtener resumen", error = ex.Message });
+                return StatusCode(500, new { message = "Error interno", error = ex.Message });
             }
         }
 
-        // ============================================================
-        // GET: Ventas por período (YYYY/MM)
-        // ============================================================
-        [HttpGet("period/{year}/{month}")]
-        public async Task<ActionResult<IEnumerable<SaleDto>>> GetSalesByPeriod(int year, int month)
+        // ==========================================================
+        // GET: api/sales/period/{year}/{month}
+        // ==========================================================
+        [HttpGet("period/{year:int}/{month:int}")]
+        public async Task<IActionResult> GetSalesByPeriod(int year, int month)
         {
             try
             {
@@ -149,111 +125,108 @@ namespace ForrajeriaJovitaAPI.Controllers
                 var start = new DateTime(year, month, 1);
                 var end = start.AddMonths(1).AddDays(-1);
 
-                var sales = await _ventaService.GetAllSalesAsync(start, end, null);
+                var list = await _ventaService.GetAllSalesAsync(start, end, null);
 
-                return Ok(sales);
+                return Ok(list);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error al obtener ventas por periodo");
-                return StatusCode(500, new { message = "Error al obtener ventas", error = ex.Message });
+                _logger.LogError(ex, "Error filtrando por período");
+                return StatusCode(500, new { message = "Error interno", error = ex.Message });
             }
         }
 
-        // ============================================================
-        // GET: Ventas por vendedor
-        // ============================================================
-        [HttpGet("seller/{sellerId}")]
-        public async Task<ActionResult<IEnumerable<SaleDto>>> GetSalesBySeller(
+        // ==========================================================
+        // GET: api/sales/seller/{sellerId}
+        // ==========================================================
+        [HttpGet("seller/{sellerId:int}")]
+        public async Task<IActionResult> GetSalesBySeller(
             int sellerId,
             [FromQuery] DateTime? startDate = null,
             [FromQuery] DateTime? endDate = null)
         {
             try
             {
-                var sales = await _ventaService.GetAllSalesAsync(startDate, endDate, sellerId);
-                return Ok(sales);
+                var list = await _ventaService.GetAllSalesAsync(startDate, endDate, sellerId);
+                return Ok(list);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error al obtener ventas por vendedor");
-                return StatusCode(500, new { message = "Error", error = ex.Message });
+                _logger.LogError(ex, "Error filtrando por vendedor");
+                return StatusCode(500, new { message = "Error interno", error = ex.Message });
             }
         }
 
-        // ============================================================
-        // GET: Estadísticas de ventas
-        // ============================================================
+        // ==========================================================
+        // GET: api/sales/statistics
+        // ==========================================================
         [HttpGet("statistics")]
-        public async Task<ActionResult<object>> GetSalesStatistics(
+        public async Task<IActionResult> GetStatistics(
             [FromQuery] DateTime? startDate = null,
             [FromQuery] DateTime? endDate = null)
         {
             try
             {
-                // Establecer valores por defecto si no vienen en query
-                if (!startDate.HasValue)
-                    startDate = new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1);
+                startDate ??= new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1);
+                endDate ??= DateTime.Now;
 
-                if (!endDate.HasValue)
-                    endDate = DateTime.Now;
+                var list = await _ventaService.GetAllSalesAsync(startDate, endDate, null);
+                var data = list.ToList();
 
-                if (startDate > endDate)
-                    return BadRequest(new { message = "Fecha de inicio inválida" });
-
-                var sales = (await _ventaService.GetAllSalesAsync(startDate, endDate, null)).ToList();
-
-                var result = new
+                var stats = new
                 {
                     Period = new { startDate, endDate },
-                    TotalSales = sales.Count,
-                    TotalAmount = sales.Sum(s => s.Total),
-                    TotalDiscount = sales.Sum(s => s.DiscountTotal),
-                    AvgTicket = sales.Any() ? sales.Average(s => s.Total) : 0,
-                    SalesByDay = sales
-                        .GroupBy(s => s.SoldAt.Date)
-                        .Select(g => new { Date = g.Key, Total = g.Sum(x => x.Total) })
+                    TotalSales = data.Count,
+                    TotalAmount = data.Sum(x => x.Total),
+                    TotalDiscount = data.Sum(x => x.DiscountTotal),
+                    Average = data.Any() ? data.Average(x => x.Total) : 0,
+                    Daily = data
+                        .GroupBy(x => x.SoldAt.Date)
+                        .Select(g => new
+                        {
+                            Date = g.Key,
+                            Count = g.Count(),
+                            Total = g.Sum(x => x.Total)
+                        })
                         .OrderBy(x => x.Date)
-                        .ToList()
                 };
 
-                return Ok(result);
+                return Ok(stats);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error al obtener estadísticas");
-                return StatusCode(500, new { message = "Error", error = ex.Message });
+                _logger.LogError(ex, "Error obteniendo estadísticas");
+                return StatusCode(500, new { message = "Error interno", error = ex.Message });
             }
         }
 
-        // ============================================================
-        // GET: Total entre fechas
-        // ============================================================
+        // ==========================================================
+        // GET: api/sales/total
+        // ==========================================================
         [HttpGet("total")]
-        public async Task<ActionResult<object>> GetSalesTotal(
+        public async Task<IActionResult> GetTotalRange(
             [FromQuery] DateTime startDate,
             [FromQuery] DateTime endDate)
         {
             try
             {
-                var sales = (await _ventaService.GetAllSalesAsync(startDate, endDate, null)).ToList();
+                var list = await _ventaService.GetAllSalesAsync(startDate, endDate, null);
+                var data = list.ToList();
 
-                var result = new
+                return Ok(new
                 {
                     startDate,
                     endDate,
-                    TotalSales = sales.Count,
-                    TotalAmount = sales.Sum(s => s.Total),
-                    TotalSubtotal = sales.Sum(s => s.Subtotal),
-                    TotalDiscount = sales.Sum(s => s.DiscountTotal)
-                };
-
-                return Ok(result);
+                    TotalSales = data.Count,
+                    TotalAmount = data.Sum(x => x.Total),
+                    Subtotal = data.Sum(x => x.Subtotal),
+                    Discount = data.Sum(x => x.DiscountTotal)
+                });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error al obtener totales");
-                return StatusCode(500, new { message = "Error", error = ex.Message });
+                _logger.LogError(ex, "Error obteniendo total");
+                return StatusCode(500, new { message = "Error interno", error = ex.Message });
             }
         }
     }

@@ -1,4 +1,3 @@
-// Models/Sale.cs
 namespace ForrajeriaJovitaAPI.Models
 {
     public class Sale
@@ -10,7 +9,17 @@ namespace ForrajeriaJovitaAPI.Models
         public decimal Subtotal { get; set; }
         public decimal DiscountTotal { get; set; }
         public decimal Total { get; set; }
+
         public DateTime CreationDate { get; set; } = DateTime.Now;
+
+        // CAMPOS DE ENTREGA (COINCIDEN CON LA BD)
+        public int? DeliveryType { get; set; }      // 0: retiro, 1: envío
+        public string? DeliveryAddress { get; set; }
+        public decimal? DeliveryCost { get; set; }
+        public string? DeliveryNote { get; set; }
+
+        // ESTADO DE PAGO
+        public int PaymentStatus { get; set; } = 0; // 0: pendiente, 1: pagado, 2: parcial
 
         // Navegación
         public CashMovement CashMovement { get; set; } = null!;

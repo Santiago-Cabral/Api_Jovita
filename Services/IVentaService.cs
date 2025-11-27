@@ -1,5 +1,4 @@
-﻿// Services/IVentaService.cs
-using ForrajeriaJovitaAPI.DTOs;
+﻿using ForrajeriaJovitaAPI.DTOs;
 
 namespace ForrajeriaJovitaAPI.Services
 {
@@ -8,10 +7,7 @@ namespace ForrajeriaJovitaAPI.Services
         Task<IEnumerable<SaleDto>> GetAllSalesAsync(DateTime? startDate = null, DateTime? endDate = null, int? sellerId = null);
         Task<SaleDto?> GetSaleByIdAsync(int id);
         Task<SaleDto> CreateSaleAsync(CreateSaleDto dto);
-        Task<object> GetTodaySalesSummaryAsync();
-
-        // 👉 NUEVO
         Task<SaleDto?> UpdateSaleAsync(UpdateSaleDto dto);
+        Task<object> GetTodaySalesSummaryAsync();
     }
-
 }
