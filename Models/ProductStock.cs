@@ -10,6 +10,8 @@
         // AHORA DECIMAL ✔
         public decimal Quantity { get; set; }
 
+
+
         public DateTime CreationDate { get; set; } = DateTime.Now;
 
         // Navegación
