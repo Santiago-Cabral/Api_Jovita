@@ -158,7 +158,8 @@ namespace ForrajeriaJovitaAPI.Services
                     if (stock == null)
                         throw new InvalidOperationException($"No existe stock para el producto {product.Name} en esta sucursal.");
 
-                    stock.Quantity -= item.Quantity;
+                    stock.Quantity = stock.Quantity - item.Quantity;
+
 
                     if (stock.Quantity < 0)
                         throw new InvalidOperationException($"Stock insuficiente para {product.Name}.");
