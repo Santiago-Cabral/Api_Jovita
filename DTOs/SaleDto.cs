@@ -13,4 +13,3 @@ namespace ForrajeriaJovitaAPI.DTOs
         public List<SalePaymentDto> Payments { get; set; } = new();
     }
 }
-}
