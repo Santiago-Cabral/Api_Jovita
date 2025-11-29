@@ -17,7 +17,7 @@ builder.Services.AddDbContext<ForrajeriaContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 // ============================================================
-// DEPENDENCY INJECTION (SERVICES)
+// SERVICES (DEPENDENCY INJECTION)
 // ============================================================
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IProductoService, ProductoService>();
@@ -30,7 +30,7 @@ builder.Services.AddScoped<ICheckoutService, CheckoutService>();
 builder.Services.AddScoped<IClientAccountService, ClientAccountService>();
 
 // ============================================================
-// CONTROLLERS + JSON
+// CONTROLLERS + JSON OPTIONS
 // ============================================================
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
@@ -40,7 +40,7 @@ builder.Services.AddControllers()
     });
 
 // ============================================================
-// CORS (REACT FRONTEND / MOBILE APPS)
+// CORS (PARA FRONTEND REACT)
 // ============================================================
 builder.Services.AddCors(options =>
 {
@@ -48,14 +48,14 @@ builder.Services.AddCors(options =>
         policy =>
         {
             policy
-                .AllowAnyOrigin()   // Podés restringirlo si querés
+                .AllowAnyOrigin()
                 .AllowAnyHeader()
                 .AllowAnyMethod();
         });
 });
 
 // ============================================================
-// JWT AUTHENTICATION
+// JWT AUTH
 // ============================================================
 var jwtKey = builder.Configuration["Jwt:Key"];
 if (string.IsNullOrWhiteSpace(jwtKey))
@@ -66,7 +66,7 @@ var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
-        options.RequireHttpsMetadata = false;   // Para Render
+        options.RequireHttpsMetadata = false; // Render usa HTTP interno
         options.SaveToken = true;
 
         options.TokenValidationParameters = new TokenValidationParameters
@@ -96,7 +96,6 @@ builder.Services.AddSwaggerGen(c =>
         Description = "API de productos, ventas, clientes y sucursales."
     });
 
-    // Esquema de autorización JWT Bearer
     var securityScheme = new OpenApiSecurityScheme
     {
         Name = "Authorization",
@@ -125,30 +124,36 @@ builder.Services.AddSwaggerGen(c =>
 var app = builder.Build();
 
 // ============================================================
-// SWAGGER SIEMPRE ACTIVO (Render necesita esto)
+// SWAGGER
 // ============================================================
 app.UseSwagger();
 app.UseSwaggerUI(c =>
 {
     c.SwaggerEndpoint("/swagger/v1/swagger.json", "Forrajeria Jovita API v1");
-    c.RoutePrefix = "swagger";  // URL final: /swagger
+    c.RoutePrefix = "swagger"; // URL final: /swagger
 });
 
 // ============================================================
-// HTTPS REDIRECTION SOLO EN DESARROLLO
+// MIDDLEWARE ORDER (MUY IMPORTANTE PARA CORS)
 // ============================================================
+
+// Routing siempre primero
+app.UseRouting();
+
+// CORS debe ir ENTRE routing y auth
+app.UseCors("AllowFront");
+
+// Solo redirección HTTPS en desarrollo
 if (app.Environment.IsDevelopment())
 {
     app.UseHttpsRedirection();
 }
 
-// ============================================================
-// MIDDLEWARE: CORS, AUTH, ROUTING
-// ============================================================
-app.UseCors("AllowFront");
+// Auth → Authorization
 app.UseAuthentication();
 app.UseAuthorization();
 
+// Después de Auth → Controllers
 app.MapControllers();
 
 // ============================================================
