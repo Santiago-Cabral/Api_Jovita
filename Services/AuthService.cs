@@ -23,7 +23,7 @@ namespace ForrajeriaJovitaAPI.Services
             _jwt = jwt;
         }
 
-        // 🔥 Convertimos RoleId → Rol que usa Authorize
+        // Mapea RoleId a un rol textual para Authorize
         private string MapRole(int? roleId)
         {
             return roleId switch
@@ -35,6 +35,9 @@ namespace ForrajeriaJovitaAPI.Services
             };
         }
 
+        // ===========================================
+        // LOGIN
+        // ===========================================
         public async Task<AuthResponseDto> LoginAsync(LoginDto dto)
         {
             var user = await _context.Users
@@ -63,10 +66,13 @@ namespace ForrajeriaJovitaAPI.Services
             };
         }
 
+        // ===========================================
+        // REGISTER
+        // ===========================================
         public async Task<AuthResponseDto> RegisterAsync(RegisterDto dto)
         {
             var exists = await _context.Users
-                .AnyAsync(u => u.UserName == dto.Email && !u.IsDeleted);
+                .AnyAsync(u => u.Email == dto.Email && !u.IsDeleted);
 
             if (exists)
                 throw new Exception("El email ya está registrado.");
@@ -75,12 +81,13 @@ namespace ForrajeriaJovitaAPI.Services
             {
                 Name = dto.Name,
                 LastName = dto.LastName,
-                UserName = dto.Email,
+                Email = dto.Email,         // <--- NUEVO
+                UserName = dto.Email,      // compatibilidad con estructuras previas
                 Password = _passwordHasher.Hash(dto.Password),
                 CreationDate = DateTime.UtcNow,
                 IsActived = true,
                 IsDeleted = false,
-                RoleId = 3 // cliente
+                RoleId = 3 // cliente por defecto
             };
 
             _context.Users.Add(user);
@@ -94,9 +101,8 @@ namespace ForrajeriaJovitaAPI.Services
                 UserId = user.Id,
                 Role = "cliente",
                 FullName = $"{user.Name} {user.LastName}",
-                Email = user.UserName
+                Email = user.Email
             };
         }
     }
 }
-
