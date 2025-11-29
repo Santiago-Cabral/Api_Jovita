@@ -39,7 +39,7 @@ namespace ForrajeriaJovitaAPI.Services
         {
             var user = await _context.Users
                 .FirstOrDefaultAsync(u =>
-                    u.UserName == dto.Email &&
+                    u.Email == dto.Email &&
                     !u.IsDeleted &&
                     u.IsActived);
 
@@ -49,7 +49,6 @@ namespace ForrajeriaJovitaAPI.Services
             if (!_passwordHasher.Verify(dto.Password, user.Password))
                 throw new Exception("Credenciales inválidas.");
 
-            // 🔥 MapRole recibe int? → int seguro
             var roleName = MapRole(user.RoleId);
 
             var token = _jwt.GenerateToken(user, roleName);
@@ -60,7 +59,7 @@ namespace ForrajeriaJovitaAPI.Services
                 UserId = user.Id,
                 Role = roleName,
                 FullName = $"{user.Name} {user.LastName}",
-                Email = user.UserName
+                Email = user.Email
             };
         }
 
