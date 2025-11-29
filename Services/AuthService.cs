@@ -89,7 +89,6 @@ namespace ForrajeriaJovitaAPI.Services
                 IsDeleted = false,
                 RoleId = 3 // cliente por defecto
             };
-
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
 
