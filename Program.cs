@@ -40,18 +40,22 @@ builder.Services.AddControllers()
     });
 
 // ============================================================
-// CORS (PARA FRONTEND REACT)
+// CORS (CORRECTO PARA RENDER + JWT + FRONTEND LOCAL)
 // ============================================================
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowFront",
-        policy =>
-        {
-            policy
-                .AllowAnyOrigin()
-                .AllowAnyHeader()
-                .AllowAnyMethod();
-        });
+    options.AddPolicy("AllowFront", policy =>
+    {
+        policy
+            .WithOrigins(
+                "http://localhost:5173",
+                "https://forrajeria-jovita.onrender.com",
+                "https://forrajeria-jovita-admin.onrender.com"
+            )
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials();
+    });
 });
 
 // ============================================================
@@ -76,7 +80,6 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateIssuerSigningKey = true,
             ValidateLifetime = true,
             ClockSkew = TimeSpan.Zero,
-
             ValidIssuer = builder.Configuration["Jwt:Issuer"],
             ValidAudience = builder.Configuration["Jwt:Audience"],
             IssuerSigningKey = signingKey
@@ -130,30 +133,28 @@ app.UseSwagger();
 app.UseSwaggerUI(c =>
 {
     c.SwaggerEndpoint("/swagger/v1/swagger.json", "Forrajeria Jovita API v1");
-    c.RoutePrefix = "swagger"; // URL final: /swagger
+    c.RoutePrefix = "swagger";
 });
 
 // ============================================================
-// MIDDLEWARE ORDER (MUY IMPORTANTE PARA CORS)
+// MIDDLEWARE ORDER (MUY IMPORTANTE)
 // ============================================================
 
-// Routing siempre primero
 app.UseRouting();
 
-// CORS debe ir ENTRE routing y auth
+// CORS SIEMPRE ENTRE ROUTING Y AUTH
 app.UseCors("AllowFront");
 
-// Solo redirección HTTPS en desarrollo
+// HTTPS solo en desarrollo (Render se encarga en producción)
 if (app.Environment.IsDevelopment())
 {
     app.UseHttpsRedirection();
 }
 
-// Auth → Authorization
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Después de Auth → Controllers
+// Controllers después de Auth
 app.MapControllers();
 
 // ============================================================
