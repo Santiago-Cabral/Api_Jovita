@@ -40,23 +40,8 @@ builder.Services.AddControllers()
     });
 
 // ============================================================
-// CORS (NATIVO, CORRECTO, DEFINITIVO)
+// ⚠️ IMPORTANTE: SIN AddCors, SIN políticas. Usamos CORS MANUAL.
 // ============================================================
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("AllowFront", p =>
-    {
-        p.WithOrigins(
-            "http://localhost:5173",
-            "https://localhost:5173",
-            "https://forrajeria-jovita.onrender.com",
-            "https://forrajeria-jovita-api.onrender.com"
-        )
-        .AllowAnyHeader()
-        .AllowAnyMethod()
-        .AllowCredentials();
-    });
-});
 
 // ============================================================
 // JWT
@@ -95,11 +80,30 @@ builder.Services.AddSwaggerGen();
 var app = builder.Build();
 
 // ============================================================
-// MIDDLEWARE ORDER (.NET 9 EXIGE ESTO)
+// 🌐 CORS MANUAL (SIMPLE, GLOBAL, FUNCIONA EN TODO)
+// ============================================================
+// No usamos credenciales/cookies, así que podemos usar '*'
+app.Use(async (ctx, next) =>
+{
+    ctx.Response.Headers["Access-Control-Allow-Origin"] = "*";
+    ctx.Response.Headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization";
+    ctx.Response.Headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS";
+
+    // Responder preflight OPTIONS acá mismo
+    if (ctx.Request.Method == "OPTIONS")
+    {
+        ctx.Response.StatusCode = 200;
+        await ctx.Response.CompleteAsync();
+        return;
+    }
+
+    await next();
+});
+
+// ============================================================
+// PIPELINE
 // ============================================================
 app.UseRouting();
-
-app.UseCors("AllowFront"); // 🔥 CORS ACTIVO Y EN EL LUGAR CORRECTO
 
 app.UseAuthentication();
 app.UseAuthorization();
@@ -110,10 +114,10 @@ app.UseSwaggerUI();
 // ============================================================
 // CONTROLLERS
 // ============================================================
-app.MapControllers().RequireCors("AllowFront");
+app.MapControllers();
 
 // ============================================================
-// HEALTH CHECK (OK)
+// HEALTH CHECK
 // ============================================================
 app.MapGet("/api/health", () =>
 {
@@ -123,7 +127,7 @@ app.MapGet("/api/health", () =>
         message = "Forrajeria Jovita API online",
         time = DateTime.UtcNow
     });
-}).RequireCors("AllowFront");
+});
 
 // ============================================================
 // RUN
