@@ -10,15 +10,15 @@ using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ============================================================
-// DATABASE
-// ============================================================
+// ===========================
+// DB
+// ===========================
 builder.Services.AddDbContext<ForrajeriaContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// ============================================================
+// ===========================
 // SERVICES
-// ============================================================
+// ===========================
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IProductoService, ProductoService>();
 builder.Services.AddScoped<IVentaService, VentaService>();
@@ -29,47 +29,46 @@ builder.Services.AddScoped<ICategoryService, CategoryService>();
 builder.Services.AddScoped<ICheckoutService, CheckoutService>();
 builder.Services.AddScoped<IClientAccountService, ClientAccountService>();
 
-// ============================================================
-// JSON OPTIONS
-// ============================================================
+// ===========================
+// JSON
+// ===========================
 builder.Services.AddControllers()
-    .AddJsonOptions(options =>
+    .AddJsonOptions(o =>
     {
-        options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
-        options.JsonSerializerOptions.WriteIndented = true;
+        o.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+        o.JsonSerializerOptions.WriteIndented = true;
     });
 
-// ============================================================
-// CORS (FUNCIONA EN .NET 9 + CLOUD FLARE RENDER)
-// ============================================================
+// ===========================
+// CORS (.NET 9 + RENDER)
+// ===========================
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFront", policy =>
     {
         policy
-            .SetIsOriginAllowed(origin => true) // PERMITE localhost, LAN, Render, Vercel, etc.
+            .SetIsOriginAllowed(origin => true)
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials();
     });
 });
 
-// ============================================================
-// JWT AUTH
-// ============================================================
-var jwtKey = builder.Configuration["Jwt:Key"];
-if (string.IsNullOrWhiteSpace(jwtKey))
-    throw new Exception("Falta Jwt:Key en Render.");
+// ===========================
+// JWT
+// ===========================
+var key = builder.Configuration["Jwt:Key"];
+if (string.IsNullOrWhiteSpace(key))
+    throw new Exception("Missing Jwt:Key");
 
-var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
+var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key));
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
+    .AddJwtBearer(o =>
     {
-        options.RequireHttpsMetadata = false;
-        options.SaveToken = true;
-
-        options.TokenValidationParameters = new TokenValidationParameters
+        o.RequireHttpsMetadata = false;
+        o.SaveToken = true;
+        o.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
             ValidateAudience = true,
@@ -82,39 +81,32 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
-// ============================================================
-// SWAGGER
-// ============================================================
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// ============================================================
-// BUILD APP
-// ============================================================
 var app = builder.Build();
 
-// ============================================================
-// SWAGGER UI
-// ============================================================
 app.UseSwagger();
 app.UseSwaggerUI();
 
-// ============================================================
-// MIDDLEWARE ORDER (OBLIGATORIO PARA .NET 9 + RENDER)
-// ============================================================
-
-// CORS SIEMPRE ANTES DE ROUTING EN .NET 9 + CLOUDFLARE
-app.UseCors("AllowFront");
-
+// ===========================
+// ORDEN CORRECTO (CRÍTICO)
+// ===========================
 app.UseRouting();
+
+app.UseCors("AllowFront");
 
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Controllers con CORS obligatorio
+// ===========================
+// Controllers
+// ===========================
 app.MapControllers().RequireCors("AllowFront");
 
-// Minimal API con CORS
+// ===========================
+// Health
+// ===========================
 app.MapGet("/api/health", () => Results.Ok(new
 {
     status = "OK",
@@ -123,7 +115,5 @@ app.MapGet("/api/health", () => Results.Ok(new
 }))
 .RequireCors("AllowFront");
 
-// ============================================================
-// RUN
-// ============================================================
 app.Run();
+
