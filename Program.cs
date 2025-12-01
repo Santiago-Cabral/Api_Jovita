@@ -40,18 +40,14 @@ builder.Services.AddControllers()
     });
 
 // ============================================================
-// CORS (CORRECTO PARA RENDER + JWT + FRONTEND LOCAL)
+// CORS PARA .NET 9 + RENDER + JWT
 // ============================================================
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFront", policy =>
     {
         policy
-            .WithOrigins(
-                "http://localhost:5173",
-                "https://forrajeria-jovita.onrender.com",
-                "https://forrajeria-jovita-admin.onrender.com"
-            )
+            .SetIsOriginAllowed(origin => true)  // PERMITE localhost, IP local, Render, etc
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials();
@@ -70,9 +66,8 @@ var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
-        options.RequireHttpsMetadata = false; // Render usa HTTP interno
+        options.RequireHttpsMetadata = false;
         options.SaveToken = true;
-
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
@@ -87,39 +82,10 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 
 // ============================================================
-// SWAGGER + JWT SUPPORT
+// SWAGGER
 // ============================================================
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(c =>
-{
-    c.SwaggerDoc("v1", new OpenApiInfo
-    {
-        Title = "Forrajeria Jovita API",
-        Version = "v1",
-        Description = "API de productos, ventas, clientes y sucursales."
-    });
-
-    var securityScheme = new OpenApiSecurityScheme
-    {
-        Name = "Authorization",
-        Description = "Token JWT en formato: Bearer {token}",
-        In = ParameterLocation.Header,
-        Type = SecuritySchemeType.Http,
-        Scheme = "bearer",
-        BearerFormat = "JWT",
-        Reference = new OpenApiReference
-        {
-            Type = ReferenceType.SecurityScheme,
-            Id = "Bearer"
-        }
-    };
-
-    c.AddSecurityDefinition("Bearer", securityScheme);
-    c.AddSecurityRequirement(new OpenApiSecurityRequirement
-    {
-        { securityScheme, new string[] {} }
-    });
-});
+builder.Services.AddSwaggerGen();
 
 // ============================================================
 // BUILD APP
@@ -127,47 +93,39 @@ builder.Services.AddSwaggerGen(c =>
 var app = builder.Build();
 
 // ============================================================
-// SWAGGER
+// SWAGGER UI
 // ============================================================
 app.UseSwagger();
-app.UseSwaggerUI(c =>
-{
-    c.SwaggerEndpoint("/swagger/v1/swagger.json", "Forrajeria Jovita API v1");
-    c.RoutePrefix = "swagger";
-});
+app.UseSwaggerUI();
 
 // ============================================================
-// MIDDLEWARE ORDER (MUY IMPORTANTE)
+// ORDER MIDDLEWARE
 // ============================================================
-
 app.UseRouting();
 
-// CORS SIEMPRE ENTRE ROUTING Y AUTH
-app.UseCors("AllowFront");
-
-// HTTPS solo en desarrollo (Render se encarga en producción)
-if (app.Environment.IsDevelopment())
-{
-    app.UseHttpsRedirection();
-}
+app.UseCors("AllowFront");   // OBLIGATORIO aquí
 
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Controllers después de Auth
-app.MapControllers();
+// =============================
+// CONTROLLERS
+// =============================
+app.MapControllers().RequireCors("AllowFront");
 
-// ============================================================
-// HEALTH CHECK
-// ============================================================
+// =============================
+// HEALTH ENDPOINT (NET 9 REQUIERE CORS EXPLÍCITO)
+// =============================
 app.MapGet("/api/health", () => Results.Ok(new
 {
     status = "OK",
     message = "Forrajeria Jovita API online",
     time = DateTime.UtcNow
-}));
+}))
+.RequireCors("AllowFront");   // ¡ESTO ES LA CLAVE!
 
 // ============================================================
 // RUN
 // ============================================================
 app.Run();
+
