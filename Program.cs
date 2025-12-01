@@ -17,7 +17,7 @@ builder.Services.AddDbContext<ForrajeriaContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 // ============================================================
-// SERVICES
+// SERVICES (DEPENDENCY INJECTION)
 // ============================================================
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IProductoService, ProductoService>();
@@ -40,36 +40,40 @@ builder.Services.AddControllers()
     });
 
 // ============================================================
-// CORS — PARA .NET 9 + CLOUDFLARE (RENDER)
+// CORS (NATIVO, CORRECTO, DEFINITIVO)
 // ============================================================
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowFront", policy =>
+    options.AddPolicy("AllowFront", p =>
     {
-        policy
-            .SetIsOriginAllowed(origin => true)
-            .AllowAnyHeader()
-            .AllowAnyMethod()
-            .AllowCredentials();
+        p.WithOrigins(
+            "http://localhost:5173",
+            "https://localhost:5173",
+            "https://forrajeria-jovita.onrender.com",
+            "https://forrajeria-jovita-api.onrender.com"
+        )
+        .AllowAnyHeader()
+        .AllowAnyMethod()
+        .AllowCredentials();
     });
 });
 
 // ============================================================
 // JWT
 // ============================================================
-var jwtKey = builder.Configuration["Jwt:Key"];
-if (string.IsNullOrWhiteSpace(jwtKey))
-    throw new Exception("Falta Jwt:Key");
+var key = builder.Configuration["Jwt:Key"];
+if (string.IsNullOrWhiteSpace(key))
+    throw new Exception("Jwt:Key no configurado.");
 
-var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
+var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key));
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(o =>
+    .AddJwtBearer(options =>
     {
-        o.RequireHttpsMetadata = false;
-        o.SaveToken = true;
+        options.RequireHttpsMetadata = false;
+        options.SaveToken = true;
 
-        o.TokenValidationParameters = new TokenValidationParameters
+        options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
             ValidateAudience = true,
@@ -91,30 +95,28 @@ builder.Services.AddSwaggerGen();
 var app = builder.Build();
 
 // ============================================================
-// ORDEN OBLIGATORIO — DOTNET 9 + CLOUD FLARE
+// MIDDLEWARE ORDER (.NET 9 EXIGE ESTO)
 // ============================================================
-
-// 1) ROUTING
 app.UseRouting();
 
-// 2) CORS (DEBE IR AQUÍ)
-app.UseCors("AllowFront");
+app.UseCors("AllowFront"); // 🔥 CORS ACTIVO Y EN EL LUGAR CORRECTO
 
-// 3) AUTH / AUTHZ
 app.UseAuthentication();
 app.UseAuthorization();
 
-// 4) SWAGGER (DESPUÉS DE CORS)
 app.UseSwagger();
 app.UseSwaggerUI();
 
-// 5) MAP CONTROLLERS + CORS
+// ============================================================
+// CONTROLLERS
+// ============================================================
 app.MapControllers().RequireCors("AllowFront");
 
-// 6) HEALTH (MINIMAL API) + SIN CACHE CLOUDFLARE
-app.MapGet("/api/health", (HttpContext ctx) =>
+// ============================================================
+// HEALTH CHECK (OK)
+// ============================================================
+app.MapGet("/api/health", () =>
 {
-    ctx.Response.Headers.CacheControl = "no-store, no-cache, must-revalidate";
     return Results.Json(new
     {
         status = "OK",
@@ -127,5 +129,3 @@ app.MapGet("/api/health", (HttpContext ctx) =>
 // RUN
 // ============================================================
 app.Run();
-
-
