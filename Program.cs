@@ -17,7 +17,7 @@ builder.Services.AddDbContext<ForrajeriaContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 // ============================================================
-// SERVICES (DEPENDENCY INJECTION)
+// SERVICES
 // ============================================================
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IProductoService, ProductoService>();
@@ -30,7 +30,7 @@ builder.Services.AddScoped<ICheckoutService, CheckoutService>();
 builder.Services.AddScoped<IClientAccountService, ClientAccountService>();
 
 // ============================================================
-// CONTROLLERS + JSON OPTIONS
+// JSON OPTIONS
 // ============================================================
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
@@ -40,14 +40,14 @@ builder.Services.AddControllers()
     });
 
 // ============================================================
-// CORS PARA .NET 9 + RENDER + JWT
+// CORS (FUNCIONA EN .NET 9 + CLOUD FLARE RENDER)
 // ============================================================
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFront", policy =>
     {
         policy
-            .SetIsOriginAllowed(origin => true)  // PERMITE localhost, IP local, Render, etc
+            .SetIsOriginAllowed(origin => true) // PERMITE localhost, LAN, Render, Vercel, etc.
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials();
@@ -59,7 +59,7 @@ builder.Services.AddCors(options =>
 // ============================================================
 var jwtKey = builder.Configuration["Jwt:Key"];
 if (string.IsNullOrWhiteSpace(jwtKey))
-    throw new Exception("Falta Jwt:Key en appsettings.json o variables de entorno.");
+    throw new Exception("Falta Jwt:Key en Render.");
 
 var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
 
@@ -68,6 +68,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     {
         options.RequireHttpsMetadata = false;
         options.SaveToken = true;
+
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
@@ -99,33 +100,30 @@ app.UseSwagger();
 app.UseSwaggerUI();
 
 // ============================================================
-// ORDER MIDDLEWARE
+// MIDDLEWARE ORDER (OBLIGATORIO PARA .NET 9 + RENDER)
 // ============================================================
-app.UseRouting();
 
-app.UseCors("AllowFront");   // OBLIGATORIO aquí
+// CORS SIEMPRE ANTES DE ROUTING EN .NET 9 + CLOUDFLARE
+app.UseCors("AllowFront");
+
+app.UseRouting();
 
 app.UseAuthentication();
 app.UseAuthorization();
 
-// =============================
-// CONTROLLERS
-// =============================
+// Controllers con CORS obligatorio
 app.MapControllers().RequireCors("AllowFront");
 
-// =============================
-// HEALTH ENDPOINT (NET 9 REQUIERE CORS EXPLÍCITO)
-// =============================
+// Minimal API con CORS
 app.MapGet("/api/health", () => Results.Ok(new
 {
     status = "OK",
     message = "Forrajeria Jovita API online",
     time = DateTime.UtcNow
 }))
-.RequireCors("AllowFront");   // ¡ESTO ES LA CLAVE!
+.RequireCors("AllowFront");
 
 // ============================================================
 // RUN
 // ============================================================
 app.Run();
-
