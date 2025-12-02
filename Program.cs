@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using ForrajeriaJovitaAPI.Data;
 using ForrajeriaJovitaAPI.Services;
 using ForrajeriaJovitaAPI.Services.Interfaces;
+using ForrajeriaJovitaAPI.Security;  // 🔥 FALTABA ESTE USING
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
