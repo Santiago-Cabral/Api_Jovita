@@ -40,8 +40,25 @@ builder.Services.AddControllers()
     });
 
 // ============================================================
-// ⚠️ IMPORTANTE: SIN AddCors, SIN políticas. Usamos CORS MANUAL.
+// 🔥 CORS - CONFIGURACIÓN CORRECTA
 // ============================================================
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowFrontend", policy =>
+    {
+        policy
+            .WithOrigins(
+                "http://localhost:5173",              // React dev local
+                "http://localhost:3000",              // React dev alternativo
+                "https://forrajeria-jovita.vercel.app", // ⚠️ REEMPLAZA con tu URL real de producción
+                "https://tu-dominio.com"              // Si tienes dominio personalizado
+            )
+            .AllowAnyMethod()                         // GET, POST, PUT, DELETE, OPTIONS
+            .AllowAnyHeader();                        // Content-Type, Authorization, etc.
+
+        // 💡 NO agregues .AllowCredentials() si no usas cookies
+    });
+});
 
 // ============================================================
 // JWT
@@ -80,34 +97,20 @@ builder.Services.AddSwaggerGen();
 var app = builder.Build();
 
 // ============================================================
-// 🌐 CORS MANUAL (SIMPLE, GLOBAL, FUNCIONA EN TODO)
+// PIPELINE - ORDEN CRÍTICO ⚠️
 // ============================================================
-// No usamos credenciales/cookies, así que podemos usar '*'
-app.Use(async (ctx, next) =>
-{
-    ctx.Response.Headers["Access-Control-Allow-Origin"] = "*";
-    ctx.Response.Headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization";
-    ctx.Response.Headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS";
 
-    // Responder preflight OPTIONS acá mismo
-    if (ctx.Request.Method == "OPTIONS")
-    {
-        ctx.Response.StatusCode = 200;
-        await ctx.Response.CompleteAsync();
-        return;
-    }
+// 🔥 1. CORS VA PRIMERO (antes de Authentication/Authorization)
+app.UseCors("AllowFrontend");
 
-    await next();
-});
-
-// ============================================================
-// PIPELINE
-// ============================================================
+// 2. Routing
 app.UseRouting();
 
+// 3. Authentication y Authorization (después de CORS)
 app.UseAuthentication();
 app.UseAuthorization();
 
+// 4. Swagger (opcional)
 app.UseSwagger();
 app.UseSwaggerUI();
 
