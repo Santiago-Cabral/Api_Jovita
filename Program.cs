@@ -19,6 +19,11 @@ builder.Services.AddDbContext<ForrajeriaContext>(options =>
 // ============================================================
 // SERVICES (DEPENDENCY INJECTION)
 // ============================================================
+// 🔐 Servicios de seguridad (FALTABAN ESTOS)
+builder.Services.AddScoped<IPasswordHasher, PasswordHasher>();
+builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
+
+// Servicios de negocio
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IProductoService, ProductoService>();
 builder.Services.AddScoped<IVentaService, VentaService>();
@@ -61,13 +66,9 @@ builder.Services.AddCors(options =>
 });
 
 // ============================================================
-// JWT
+// JWT AUTHENTICATION
 // ============================================================
-var key = builder.Configuration["Jwt:Key"];
-if (string.IsNullOrWhiteSpace(key))
-    throw new Exception("Jwt:Key no configurado.");
-
-var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key));
+var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.Key));
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -82,8 +83,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateIssuerSigningKey = true,
             ValidateLifetime = true,
             ClockSkew = TimeSpan.Zero,
-            ValidIssuer = builder.Configuration["Jwt:Issuer"],
-            ValidAudience = builder.Configuration["Jwt:Audience"],
+            ValidIssuer = jwtSettings.Issuer,
+            ValidAudience = jwtSettings.Audience,
             IssuerSigningKey = signingKey
         };
     });
