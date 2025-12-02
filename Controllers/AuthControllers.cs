@@ -16,11 +16,22 @@ namespace ForrajeriaJovitaAPI.Controllers
         }
 
         [HttpPost("register")]
-        public async Task<IActionResult> Register(RegisterDto dto)
+        public async Task<IActionResult> Register([FromBody] RegisterDto dto)
         {
             try
             {
-                return Ok(await _auth.RegisterAsync(dto));
+                if (dto == null)
+                {
+                    return BadRequest(new { message = "Los datos son requeridos" });
+                }
+
+                if (!ModelState.IsValid)
+                {
+                    return BadRequest(ModelState);
+                }
+
+                var result = await _auth.RegisterAsync(dto);
+                return Ok(result);
             }
             catch (Exception ex)
             {
@@ -29,11 +40,22 @@ namespace ForrajeriaJovitaAPI.Controllers
         }
 
         [HttpPost("login")]
-        public async Task<IActionResult> Login(LoginDto dto)
+        public async Task<IActionResult> Login([FromBody] LoginDto dto)
         {
             try
             {
-                return Ok(await _auth.LoginAsync(dto));
+                if (dto == null)
+                {
+                    return BadRequest(new { message = "Los datos son requeridos" });
+                }
+
+                if (!ModelState.IsValid)
+                {
+                    return BadRequest(ModelState);
+                }
+
+                var result = await _auth.LoginAsync(dto);
+                return Ok(result);
             }
             catch (Exception ex)
             {
