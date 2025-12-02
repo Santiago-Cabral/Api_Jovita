@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 using ForrajeriaJovitaAPI.Data;
 using ForrajeriaJovitaAPI.Services;
 using ForrajeriaJovitaAPI.Services.Interfaces;
-using ForrajeriaJovitaAPI.Security;  // 🔥 FALTABA ESTE USING
+using ForrajeriaJovitaAPI.Security;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -20,8 +20,21 @@ builder.Services.AddDbContext<ForrajeriaContext>(options =>
 // ============================================================
 // SERVICES (DEPENDENCY INJECTION)
 // ============================================================
-// 🔐 Servicios de seguridad (FALTABAN ESTOS)
-builder.Services.AddScoped<IPasswordHasher, PasswordHasher>();
+
+// 🔐 JWT Settings - ESTO FALTABA EN TU ARCHIVO
+var jwtSettings = new JwtSettings
+{
+    Key = builder.Configuration["Jwt:Key"] ?? throw new Exception("Jwt:Key no configurado"),
+    Issuer = builder.Configuration["Jwt:Issuer"] ?? throw new Exception("Jwt:Issuer no configurado"),
+    Audience = builder.Configuration["Jwt:Audience"] ?? throw new Exception("Jwt:Audience no configurado"),
+    ExpiresMinutes = string.IsNullOrEmpty(builder.Configuration["Jwt:ExpiresMinutes"])
+        ? 60
+        : int.Parse(builder.Configuration["Jwt:ExpiresMinutes"])
+};
+builder.Services.AddSingleton(jwtSettings);
+
+// 🔐 Servicios de seguridad
+builder.Services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();  // 🔥 BCRYPT, no PasswordHasher
 builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
 
 // Servicios de negocio
@@ -46,7 +59,7 @@ builder.Services.AddControllers()
     });
 
 // ============================================================
-// 🔥 CORS - CONFIGURACIÓN CORRECTA
+// CORS - CONFIGURACIÓN CORRECTA
 // ============================================================
 builder.Services.AddCors(options =>
 {
@@ -61,8 +74,6 @@ builder.Services.AddCors(options =>
             )
             .AllowAnyMethod()                         // GET, POST, PUT, DELETE, OPTIONS
             .AllowAnyHeader();                        // Content-Type, Authorization, etc.
-
-        // 💡 NO agregues .AllowCredentials() si no usas cookies
     });
 });
 
