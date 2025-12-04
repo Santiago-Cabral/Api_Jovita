@@ -1,3 +1,12 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using ForrajeriaJovitaAPI.Data;
+using ForrajeriaJovitaAPI.DTOs.Products;
+using ForrajeriaJovitaAPI.Models;
+using Microsoft.EntityFrameworkCore;
+
 namespace ForrajeriaJovitaAPI.Services
 {
     public class StockService : IStockService
@@ -36,12 +45,25 @@ namespace ForrajeriaJovitaAPI.Services
             }).ToList();
         }
 
-        public async Task<List<ProductStockDto>> GetStockByBranchAsync(int branchId)
-            => await GetAllStockAsync(branchId, null);
+        // =====================================================
+        // STOCK POR SUCURSAL
+        // =====================================================
+        public Task<List<ProductStockDto>> GetStockByBranchAsync(int branchId)
+        {
+            return GetAllStockAsync(branchId, null);
+        }
 
-        public async Task<List<ProductStockDto>> GetStockByProductAsync(int productId)
-            => await GetAllStockAsync(null, productId);
+        // =====================================================
+        // STOCK POR PRODUCTO
+        // =====================================================
+        public Task<List<ProductStockDto>> GetStockByProductAsync(int productId)
+        {
+            return GetAllStockAsync(null, productId);
+        }
 
+        // =====================================================
+        // SET STOCK (reemplaza cantidad)
+        // =====================================================
         public async Task<bool> UpdateStockAsync(UpdateStockDto dto)
         {
             var stock = await _context.ProductsStocks
@@ -69,6 +91,9 @@ namespace ForrajeriaJovitaAPI.Services
             return true;
         }
 
+        // =====================================================
+        // ADD STOCK (suma cantidad)
+        // =====================================================
         public async Task<bool> AddStockAsync(UpdateStockDto dto)
         {
             var stock = await _context.ProductsStocks
@@ -96,6 +121,9 @@ namespace ForrajeriaJovitaAPI.Services
             return true;
         }
 
+        // =====================================================
+        // STOCK BAJO
+        // =====================================================
         public async Task<List<ProductStockDto>> GetLowStockAsync(decimal threshold = 10)
         {
             var stocks = await _context.ProductsStocks
@@ -114,3 +142,4 @@ namespace ForrajeriaJovitaAPI.Services
         }
     }
 }
+
