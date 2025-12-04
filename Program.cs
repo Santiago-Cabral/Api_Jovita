@@ -2,7 +2,6 @@
 using System.Text.Json.Serialization;
 using ForrajeriaJovitaAPI.Data;
 using ForrajeriaJovitaAPI.Services;
-using ForrajeriaJovitaAPI.Services.Interfaces;
 using ForrajeriaJovitaAPI.Security;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;

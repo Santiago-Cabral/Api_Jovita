@@ -1,14 +1,10 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using Microsoft.EntityFrameworkCore;
-using ForrajeriaJovitaAPI.Data;
-using ForrajeriaJovitaAPI.Models;
-using ForrajeriaJovitaAPI.DTOs.Products;
-using ForrajeriaJovitaAPI.Services.Interfaces; // 👈 IMPORTANTE
+﻿using ForrajeriaJovitaAPI.DTOs.Services;
 
-namespace ForrajeriaJovitaAPI.Services.Interfaces
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using ForrajeriaJovitaAPI.DTOs.Products;
+
+namespace ForrajeriaJovitaAPI.Services
 {
     public interface IStockService
     {
