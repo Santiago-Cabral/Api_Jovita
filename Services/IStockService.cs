@@ -1,10 +1,10 @@
-﻿using ForrajeriaJovitaAPI.DTOs.Services;
+﻿// Services/IStockService.cs
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using ForrajeriaJovitaAPI.DTOs.Products;
+using ForrajeriaJovitaAPI.DTOs.Products;   // 👈 ESTE es el correcto
 
-namespace ForrajeriaJovitaAPI.Services
+namespace ForrajeriaJovitaAPI.Services      // 👈 Y este namespace, NO DTOs.Services
 {
     public interface IStockService
     {
