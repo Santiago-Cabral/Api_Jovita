@@ -1,12 +1,3 @@
-/// ============================================
-// StockService.cs - CORREGIDO
-// ============================================
-using Microsoft.EntityFrameworkCore;
-using ForrajeriaJovitaAPI.Data;
-using ForrajeriaJovitaAPI.Models;
-using ForrajeriaJovitaAPI.DTOs.Products;
-
-
 namespace ForrajeriaJovitaAPI.Services
 {
     public class StockService : IStockService
@@ -18,6 +9,9 @@ namespace ForrajeriaJovitaAPI.Services
             _context = context;
         }
 
+        // =====================================================
+        // STOCK GENERAL (con filtros opcionales)
+        // =====================================================
         public async Task<List<ProductStockDto>> GetAllStockAsync(int? branchId = null, int? productId = null)
         {
             var query = _context.ProductsStocks
@@ -43,19 +37,17 @@ namespace ForrajeriaJovitaAPI.Services
         }
 
         public async Task<List<ProductStockDto>> GetStockByBranchAsync(int branchId)
-        {
-            return await GetAllStockAsync(branchId, null);
-        }
+            => await GetAllStockAsync(branchId, null);
 
         public async Task<List<ProductStockDto>> GetStockByProductAsync(int productId)
-        {
-            return await GetAllStockAsync(null, productId);
-        }
+            => await GetAllStockAsync(null, productId);
 
         public async Task<bool> UpdateStockAsync(UpdateStockDto dto)
         {
             var stock = await _context.ProductsStocks
-                .FirstOrDefaultAsync(s => s.ProductId == dto.ProductId && s.BranchId == dto.BranchId);
+                .FirstOrDefaultAsync(s =>
+                    s.ProductId == dto.ProductId &&
+                    s.BranchId == dto.BranchId);
 
             if (stock == null)
             {
@@ -80,7 +72,9 @@ namespace ForrajeriaJovitaAPI.Services
         public async Task<bool> AddStockAsync(UpdateStockDto dto)
         {
             var stock = await _context.ProductsStocks
-                .FirstOrDefaultAsync(s => s.ProductId == dto.ProductId && s.BranchId == dto.BranchId);
+                .FirstOrDefaultAsync(s =>
+                    s.ProductId == dto.ProductId &&
+                    s.BranchId == dto.BranchId);
 
             if (stock == null)
             {

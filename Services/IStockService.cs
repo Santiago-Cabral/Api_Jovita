@@ -1,10 +1,14 @@
-// ============================================
-// IStockService.cs - CORREGIDO
-// ============================================
-
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+using ForrajeriaJovitaAPI.Data;
+using ForrajeriaJovitaAPI.Models;
 using ForrajeriaJovitaAPI.DTOs.Products;
+using ForrajeriaJovitaAPI.Services.Interfaces; // 👈 IMPORTANTE
 
-namespace ForrajeriaJovitaAPI.Services
+namespace ForrajeriaJovitaAPI.Services.Interfaces
 {
     public interface IStockService
     {
