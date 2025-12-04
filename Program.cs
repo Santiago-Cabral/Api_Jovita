@@ -2,6 +2,7 @@
 using System.Text.Json.Serialization;
 using ForrajeriaJovitaAPI.Data;
 using ForrajeriaJovitaAPI.Services;
+using ForrajeriaJovitaAPI.Services.Interfaces;   // 👈 FALTABA
 using ForrajeriaJovitaAPI.Security;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -20,7 +21,7 @@ builder.Services.AddDbContext<ForrajeriaContext>(options =>
 // SERVICES (DEPENDENCY INJECTION)
 // ============================================================
 
-// 🔐 JWT Settings - ESTO FALTABA EN TU ARCHIVO
+// 🔐 JWT Settings
 var jwtSettings = new JwtSettings
 {
     Key = builder.Configuration["Jwt:Key"] ?? throw new Exception("Jwt:Key no configurado"),
@@ -33,7 +34,7 @@ var jwtSettings = new JwtSettings
 builder.Services.AddSingleton(jwtSettings);
 
 // 🔐 Servicios de seguridad
-builder.Services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();  // 🔥 BCRYPT, no PasswordHasher
+builder.Services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();
 builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
 
 // Servicios de negocio
@@ -58,7 +59,7 @@ builder.Services.AddControllers()
     });
 
 // ============================================================
-// CORS - CONFIGURACIÓN CORRECTA
+// CORS
 // ============================================================
 builder.Services.AddCors(options =>
 {
@@ -66,13 +67,13 @@ builder.Services.AddCors(options =>
     {
         policy
             .WithOrigins(
-                "http://localhost:5173",              // React dev local
-                "http://localhost:3000",              // React dev alternativo
-                "https://forrajeria-jovita.vercel.app", // ⚠️ REEMPLAZA con tu URL real de producción
-                "https://tu-dominio.com"              // Si tienes dominio personalizado
+                "http://localhost:5173",
+                "http://localhost:3000",
+                "https://forrajeria-jovita.vercel.app",
+                "https://tu-dominio.com"
             )
-            .AllowAnyMethod()                         // GET, POST, PUT, DELETE, OPTIONS
-            .AllowAnyHeader();                        // Content-Type, Authorization, etc.
+            .AllowAnyMethod()
+            .AllowAnyHeader();
     });
 });
 
@@ -109,31 +110,20 @@ builder.Services.AddSwaggerGen();
 var app = builder.Build();
 
 // ============================================================
-// PIPELINE - ORDEN CRÍTICO ⚠️
+// PIPELINE
 // ============================================================
-
-// 🔥 1. CORS VA PRIMERO (antes de Authentication/Authorization)
 app.UseCors("AllowFrontend");
 
-// 2. Routing
 app.UseRouting();
 
-// 3. Authentication y Authorization (después de CORS)
 app.UseAuthentication();
 app.UseAuthorization();
 
-// 4. Swagger (opcional)
 app.UseSwagger();
 app.UseSwaggerUI();
 
-// ============================================================
-// CONTROLLERS
-// ============================================================
 app.MapControllers();
 
-// ============================================================
-// HEALTH CHECK
-// ============================================================
 app.MapGet("/api/health", () =>
 {
     return Results.Json(new
@@ -144,7 +134,4 @@ app.MapGet("/api/health", () =>
     });
 });
 
-// ============================================================
-// RUN
-// ============================================================
 app.Run();
