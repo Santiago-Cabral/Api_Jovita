@@ -1,13 +1,12 @@
 ﻿using System.Text;
 using System.Text.Json.Serialization;
 using ForrajeriaJovitaAPI.Data;
-using ForrajeriaJovitaAPI.Services;
-using ForrajeriaJovitaAPI.Services.Interfaces;   // 👈 FALTABA
 using ForrajeriaJovitaAPI.Security;
+using ForrajeriaJovitaAPI.Services;
+using ForrajeriaJovitaAPI.Services.Interfaces;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -18,10 +17,8 @@ builder.Services.AddDbContext<ForrajeriaContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 // ============================================================
-// SERVICES (DEPENDENCY INJECTION)
+// JWT SETTINGS
 // ============================================================
-
-// 🔐 JWT Settings
 var jwtSettings = new JwtSettings
 {
     Key = builder.Configuration["Jwt:Key"] ?? throw new Exception("Jwt:Key no configurado"),
@@ -29,15 +26,16 @@ var jwtSettings = new JwtSettings
     Audience = builder.Configuration["Jwt:Audience"] ?? throw new Exception("Jwt:Audience no configurado"),
     ExpiresMinutes = string.IsNullOrEmpty(builder.Configuration["Jwt:ExpiresMinutes"])
         ? 60
-        : int.Parse(builder.Configuration["Jwt:ExpiresMinutes"])
+        : int.Parse(builder.Configuration["Jwt:ExpiresMinutes"]!)
 };
 builder.Services.AddSingleton(jwtSettings);
 
-// 🔐 Servicios de seguridad
+// ============================================================
+// SERVICES (DEPENDENCY INJECTION)
+// ============================================================
 builder.Services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();
 builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
 
-// Servicios de negocio
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IProductoService, ProductoService>();
 builder.Services.AddScoped<IVentaService, VentaService>();
@@ -49,7 +47,7 @@ builder.Services.AddScoped<ICheckoutService, CheckoutService>();
 builder.Services.AddScoped<IClientAccountService, ClientAccountService>();
 
 // ============================================================
-// JSON OPTIONS
+// CONTROLLERS / JSON
 // ============================================================
 builder.Services.AddControllers()
     .AddJsonOptions(o =>
@@ -59,7 +57,7 @@ builder.Services.AddControllers()
     });
 
 // ============================================================
-// CORS
+// CORS - PRODUCCIÓN (solo frontends válidos)
 // ============================================================
 builder.Services.AddCors(options =>
 {
@@ -67,18 +65,19 @@ builder.Services.AddCors(options =>
     {
         policy
             .WithOrigins(
-                "http://localhost:5173",
-                "http://localhost:3000",
-                "https://forrajeria-jovita.vercel.app",
-                "https://tu-dominio.com"
+                "http://localhost:5173",                 // Dev local
+                "http://localhost:3000",                 // Otro dev
+                "https://forrajeria-jovita.vercel.app"   // Frontend en producción
+                                                         // agrega aquí tu dominio propio si luego lo tienes
+                                                         // "https://tu-dominio.com"
             )
-            .AllowAnyMethod()
-            .AllowAnyHeader();
+            .AllowAnyHeader()
+            .AllowAnyMethod();
     });
 });
 
 // ============================================================
-// JWT AUTHENTICATION
+// AUTHENTICATION (JWT)
 // ============================================================
 var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.Key));
 
@@ -112,18 +111,26 @@ var app = builder.Build();
 // ============================================================
 // PIPELINE
 // ============================================================
-app.UseCors("AllowFrontend");
+app.UseHttpsRedirection();
 
+// 1. Routing
 app.UseRouting();
 
+// 2. CORS (DESPUÉS de Routing, ANTES de Auth)
+app.UseCors("AllowFrontend");
+
+// 3. Auth
 app.UseAuthentication();
 app.UseAuthorization();
 
+// 4. Swagger
 app.UseSwagger();
 app.UseSwaggerUI();
 
+// 5. Controllers
 app.MapControllers();
 
+// 6. Health check
 app.MapGet("/api/health", () =>
 {
     return Results.Json(new
