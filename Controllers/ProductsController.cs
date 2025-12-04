@@ -30,60 +30,58 @@ namespace ForrajeriaJovitaAPI.Controllers
         [HttpGet]
         public async Task<ActionResult<IEnumerable<ProductResponseDto>>> GetProducts()
         {
+            // 1) Traer productos + categoría
+            var products = await _context.Products
+                .Where(p => !p.IsDeleted)
+                .Include(p => p.Category)
+                .AsNoTracking()
+                .ToListAsync();
+
+            var productIds = products.Select(p => p.Id).ToList();
+
+            // 2) Diccionario de stock (por defecto 0)
+            var stockDict = new Dictionary<int, decimal>();
+
             try
             {
-                // 1) Traer productos + categoría
-                var products = await _context.Products
-                    .Where(p => !p.IsDeleted)
-                    .Include(p => p.Category)
-                    .AsNoTracking()
-                    .ToListAsync();
-
-                var productIds = products.Select(p => p.Id).ToList();
-
-                // 2) Traer filas de stock SIN GroupBy en el servidor
+                // Intentar leer el stock; si la tabla no existe o hay error, caemos al catch
                 var stockRows = await _context.ProductsStocks
                     .Where(s => productIds.Contains(s.ProductId))
                     .AsNoTracking()
                     .ToListAsync();
 
-                // 3) Agrupar en memoria (LINQ to Objects)
-                var stockDict = stockRows
+                stockDict = stockRows
                     .GroupBy(s => s.ProductId)
                     .ToDictionary(
                         g => g.Key,
                         g => g.Sum(x => x.Quantity)
                     );
-
-                // 4) Mapear a DTO
-                var result = products.Select(p => new ProductResponseDto
-                {
-                    Id = p.Id,
-                    Code = p.Code,
-                    Name = p.Name,
-                    CostPrice = p.CostPrice,
-                    RetailPrice = p.RetailPrice,
-                    WholesalePrice = p.WholesalePrice,
-                    BaseUnit = (int)p.BaseUnit,
-                    IsActived = p.IsActived,
-                    UpdateDate = p.UpdateDate ?? p.CreationDate,
-                    CategoryId = p.CategoryId ?? 0,
-                    CategoryName = p.Category != null ? p.Category.Name : null,
-                    Image = p.Image,
-                    Stock = stockDict.ContainsKey(p.Id) ? stockDict[p.Id] : 0
-                }).ToList();
-
-                return Ok(result);
             }
-            catch (Exception ex)
+            catch
             {
-                // Para que veas el error real en JSON mientras debugueás
-                return StatusCode(500, new
-                {
-                    message = "Error al obtener productos",
-                    error = ex.Message
-                });
+                // NO lanzamos la excepción: devolvemos productos con Stock = 0.
+                // Si querés loguear algo acá podés usar un logger.
             }
+
+            // 3) Mapear a DTO
+            var result = products.Select(p => new ProductResponseDto
+            {
+                Id = p.Id,
+                Code = p.Code,
+                Name = p.Name,
+                CostPrice = p.CostPrice,
+                RetailPrice = p.RetailPrice,
+                WholesalePrice = p.WholesalePrice,
+                BaseUnit = (int)p.BaseUnit,
+                IsActived = p.IsActived,
+                UpdateDate = p.UpdateDate ?? p.CreationDate,
+                CategoryId = p.CategoryId ?? 0,
+                CategoryName = p.Category != null ? p.Category.Name : null,
+                Image = p.Image,
+                Stock = stockDict.TryGetValue(p.Id, out var qty) ? qty : 0
+            }).ToList();
+
+            return Ok(result);
         }
 
         // =========================================================
@@ -99,9 +97,19 @@ namespace ForrajeriaJovitaAPI.Controllers
             if (p == null)
                 return NotFound();
 
-            var stockTotal = await _context.ProductsStocks
-                .Where(s => s.ProductId == id)
-                .SumAsync(s => s.Quantity);
+            decimal stockTotal = 0;
+
+            try
+            {
+                stockTotal = await _context.ProductsStocks
+                    .Where(s => s.ProductId == id)
+                    .SumAsync(s => s.Quantity);
+            }
+            catch
+            {
+                // Si hay error de stock, devolvemos 0 pero no rompemos el endpoint
+                stockTotal = 0;
+            }
 
             var dto = new ProductResponseDto
             {
@@ -161,7 +169,7 @@ namespace ForrajeriaJovitaAPI.Controllers
                 CategoryId = product.CategoryId ?? 0,
                 CategoryName = null,
                 Image = product.Image,
-                Stock = 0 // recién creado
+                Stock = 0 // recién creado, sin stock aún
             };
 
             return CreatedAtAction(nameof(GetProduct), new { id = product.Id }, response);
@@ -214,9 +222,10 @@ namespace ForrajeriaJovitaAPI.Controllers
         }
 
         // =========================================================
-        // ENDPOINTS DE STOCK
+        // ENDPOINTS DE STOCK (por producto)
         // =========================================================
 
+        // GET api/Products/5/stock -> lista stock por sucursal
         [HttpGet("{id}/stock")]
         public async Task<IActionResult> GetStockByProduct(int id)
         {
@@ -224,6 +233,7 @@ namespace ForrajeriaJovitaAPI.Controllers
             return Ok(stocks);
         }
 
+        // POST api/Products/5/stock/set  (setea cantidad exacta)
         [HttpPost("{id}/stock/set")]
         public async Task<IActionResult> SetStock(int id, [FromBody] UpdateStockDto dto)
         {
@@ -236,6 +246,7 @@ namespace ForrajeriaJovitaAPI.Controllers
             return Ok(new { message = "Stock actualizado correctamente" });
         }
 
+        // POST api/Products/5/stock/add  (suma stock)
         [HttpPost("{id}/stock/add")]
         public async Task<IActionResult> AddStock(int id, [FromBody] UpdateStockDto dto)
         {
@@ -249,3 +260,4 @@ namespace ForrajeriaJovitaAPI.Controllers
         }
     }
 }
+
