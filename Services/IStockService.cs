@@ -1,10 +1,8 @@
-﻿// Services/IStockService.cs
-
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Threading.Tasks;
-using ForrajeriaJovitaAPI.DTOs.Products;   // 👈 ESTE es el correcto
+using ForrajeriaJovitaAPI.DTOs.Products;   // 👈 correcto
 
-namespace ForrajeriaJovitaAPI.Services      // 👈 Y este namespace, NO DTOs.Services
+namespace ForrajeriaJovitaAPI.Services      // 👈 mismo namespace que StockService
 {
     public interface IStockService
     {

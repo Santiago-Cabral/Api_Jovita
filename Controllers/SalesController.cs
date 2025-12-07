@@ -88,7 +88,6 @@ namespace ForrajeriaJovitaAPI.Controllers
             }
             catch (InvalidOperationException ex)
             {
-                // Errores controlados (stock insuficiente, pago incompleto, etc.)
                 _logger.LogWarning(ex, "Error de validación al crear venta");
                 return BadRequest(new { message = ex.Message });
             }
@@ -173,7 +172,6 @@ namespace ForrajeriaJovitaAPI.Controllers
         {
             try
             {
-                // Si no pasan fechas, tomar mes actual
                 startDate ??= new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1);
                 endDate ??= DateTime.Now;
 
@@ -234,6 +232,35 @@ namespace ForrajeriaJovitaAPI.Controllers
             {
                 _logger.LogError(ex, "Error al obtener totales");
                 return StatusCode(500, new { message = "Error al obtener totales", error = ex.Message });
+            }
+        }
+
+        // ======================================================================
+        // PUT /api/sales/{id}  (actualizar envío / estado pago)
+        // ======================================================================
+        [HttpPut("{id}")]
+        public async Task<ActionResult> UpdateSale(int id, [FromBody] UpdateSaleDto dto)
+        {
+            try
+            {
+                if (dto == null)
+                    return BadRequest(new { message = "Datos inválidos" });
+
+                var updated = await _ventaService.UpdateSaleAsync(id, dto);
+
+                if (!updated)
+                {
+                    _logger.LogWarning("Intento de actualizar venta inexistente {Id}", id);
+                    return NotFound(new { message = "Venta no encontrada" });
+                }
+
+                // 204 = actualizado correctamente, sin cuerpo
+                return NoContent();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al actualizar venta {Id}", id);
+                return StatusCode(500, new { message = "Error al actualizar venta", error = ex.Message });
             }
         }
     }

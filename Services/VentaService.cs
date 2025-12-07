@@ -13,6 +13,7 @@ namespace ForrajeriaJovitaAPI.Services
         {
             _context = context;
         }
+
         // ============================================================
         // GET ALL SALES
         // ============================================================
@@ -116,11 +117,13 @@ namespace ForrajeriaJovitaAPI.Services
                     DiscountTotal = totalDiscount,
                     Total = total,
                     CreationDate = DateTime.Now,
+
+                    // Datos de envío y estado inicial
                     DeliveryType = null,
                     DeliveryAddress = null,
                     DeliveryCost = null,
                     DeliveryNote = null,
-                    PaymentStatus = 1 // pagado (1 = pagado, 0 = pendiente)
+                    PaymentStatus = 1 // 0 = pendiente, 1 = pagado, 2 = entregado (por ejemplo)
                 };
 
                 _context.Sales.Add(sale);
@@ -148,17 +151,17 @@ namespace ForrajeriaJovitaAPI.Services
 
                     _context.SalesItems.Add(saleItem);
 
-                    // Actualizar stock
+                    // Actualizar stock en la sucursal de la sesión de caja
                     var stock = await _context.ProductsStocks
                         .FirstOrDefaultAsync(s =>
                             s.ProductId == item.ProductId &&
                             s.BranchId == cashSession.BranchId);
 
                     if (stock == null)
-                        throw new InvalidOperationException($"No existe stock para el producto {product.Name} en esta sucursal.");
+                        throw new InvalidOperationException(
+                            $"No existe stock para el producto {product.Name} en esta sucursal.");
 
                     stock.Quantity = stock.Quantity - item.Quantity;
-
 
                     if (stock.Quantity < 0)
                         throw new InvalidOperationException($"Stock insuficiente para {product.Name}.");
@@ -193,6 +196,34 @@ namespace ForrajeriaJovitaAPI.Services
         }
 
         // ============================================================
+        // UPDATE SALE (delivery + estado pago)
+        // ============================================================
+        public async Task<bool> UpdateSaleAsync(int saleId, UpdateSaleDto dto)
+        {
+            var sale = await _context.Sales.FindAsync(saleId);
+            if (sale == null) return false;
+
+            // Solo actualizamos lo que venga en el DTO
+            if (dto.DeliveryType.HasValue)
+                sale.DeliveryType = dto.DeliveryType.Value;
+
+            if (dto.DeliveryAddress != null)
+                sale.DeliveryAddress = dto.DeliveryAddress;
+
+            if (dto.DeliveryCost.HasValue)
+                sale.DeliveryCost = dto.DeliveryCost.Value;
+
+            if (dto.DeliveryNote != null)
+                sale.DeliveryNote = dto.DeliveryNote;
+
+            if (dto.PaymentStatus.HasValue)
+                sale.PaymentStatus = dto.PaymentStatus.Value;
+
+            await _context.SaveChangesAsync();
+            return true;
+        }
+
+        // ============================================================
         // RESUMEN DEL DÍA
         // ============================================================
         public async Task<object> GetTodaySalesSummaryAsync()
@@ -224,9 +255,16 @@ namespace ForrajeriaJovitaAPI.Services
                 Id = s.Id,
                 SoldAt = s.SoldAt,
                 SellerName = $"{s.SellerUser.Name} {s.SellerUser.LastName}",
-                Subtotal = s.Subtotal,
+                Subtotal = s.SSubtotal,
                 DiscountTotal = s.DiscountTotal,
                 Total = s.Total,
+
+                // Datos de envío y estado de pago
+                DeliveryType = s.DeliveryType,
+                DeliveryAddress = s.DeliveryAddress,
+                DeliveryCost = s.DeliveryCost,
+                DeliveryNote = s.DeliveryNote,
+                PaymentStatus = s.PaymentStatus,
 
                 Items = s.SalesItems.Select(i => new SaleItemDto
                 {
