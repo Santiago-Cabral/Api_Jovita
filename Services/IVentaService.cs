@@ -9,5 +9,7 @@ namespace ForrajeriaJovitaAPI.Services
         Task<SaleDto> CreateSaleAsync(CreateSaleDto dto);
         Task<SaleDto?> UpdateSaleAsync(int id, UpdateSaleDto dto);
         Task<object> GetTodaySalesSummaryAsync();
+        Task<SaleDto> CreatePublicSaleAsync(CreatePublicSaleDto dto);
+
     }
 }

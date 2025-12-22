@@ -57,6 +57,76 @@ namespace ForrajeriaJovitaAPI.Services
 
             return sale == null ? null : MapSaleToDto(sale);
         }
+        //________________________________________________________________
+        //SALE PUBLICA
+        //-----------------------------------------------------------
+        public async Task<SaleDto> CreatePublicSaleAsync(CreatePublicSaleDto dto)
+        {
+            using var transaction = await _context.Database.BeginTransactionAsync();
+
+            try
+            {
+                decimal subtotal = dto.Items.Sum(i => i.Quantity * i.UnitPrice);
+                decimal total = subtotal + dto.ShippingCost;
+
+                var sale = new Sale
+                {
+                    SoldAt = DateTime.Now,
+                    Subtotal = subtotal,
+                    DiscountTotal = 0,
+                    Total = total,
+
+                    DeliveryType = 1,
+                    DeliveryAddress = dto.Customer.Address,
+                    DeliveryCost = dto.ShippingCost,
+                    DeliveryNote = $"{dto.Customer.Name} | {dto.Customer.Phone}",
+
+                    PaymentStatus = 0,
+                    CreationDate = DateTime.Now
+                };
+
+                _context.Sales.Add(sale);
+                await _context.SaveChangesAsync();
+
+                foreach (var item in dto.Items)
+                {
+                    var product = await _context.Products.FindAsync(item.ProductId);
+                    if (product == null)
+                        throw new InvalidOperationException("Producto no encontrado.");
+
+                    _context.SalesItems.Add(new SaleItem
+                    {
+                        SaleId = sale.Id,
+                        ProductId = item.ProductId,
+                        Quantity = item.Quantity,
+                        UnitPrice = item.UnitPrice,
+                        Discount = 0,
+                        ConversionToBase = 1,
+                        DeductedBaseQuantity = item.Quantity,
+                        CreationDate = DateTime.Now
+                    });
+                }
+
+                _context.SalesPayments.Add(new SalePayment
+                {
+                    SaleId = sale.Id,
+                    Method = (PaymentMethod)dto.PaymentMethod,
+                    Amount = total,
+                    Reference = dto.PaymentReference ?? "Pedido Web",
+                    CreationDate = DateTime.Now
+                });
+
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                return (await GetSaleByIdAsync(sale.Id))!;
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+        }
 
         // ============================================================
         // CREATE SALE

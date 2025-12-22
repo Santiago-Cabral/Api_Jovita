@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using ForrajeriaJovitaAPI.Services;
 using ForrajeriaJovitaAPI.DTOs;
 
@@ -11,7 +12,9 @@ namespace ForrajeriaJovitaAPI.Controllers
         private readonly IVentaService _ventaService;
         private readonly ILogger<SalesController> _logger;
 
-        public SalesController(IVentaService ventaService, ILogger<SalesController> logger)
+        public SalesController(
+            IVentaService ventaService,
+            ILogger<SalesController> logger)
         {
             _ventaService = ventaService;
             _logger = logger;
@@ -28,7 +31,8 @@ namespace ForrajeriaJovitaAPI.Controllers
         {
             try
             {
-                _logger.LogInformation("Consultando ventas. start={Start}, end={End}, seller={SellerId}",
+                _logger.LogInformation(
+                    "Consultando ventas. start={Start}, end={End}, seller={SellerId}",
                     startDate, endDate, sellerId);
 
                 var sales = await _ventaService.GetAllSalesAsync(startDate, endDate, sellerId);
@@ -37,14 +41,18 @@ namespace ForrajeriaJovitaAPI.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error al obtener ventas");
-                return StatusCode(500, new { message = "Error al obtener ventas", error = ex.Message });
+                return StatusCode(500, new
+                {
+                    message = "Error al obtener ventas",
+                    error = ex.Message
+                });
             }
         }
 
         // ======================================================================
         // GET /api/sales/{id}
         // ======================================================================
-        [HttpGet("{id}")]
+        [HttpGet("{id:int}")]
         public async Task<ActionResult<SaleDto>> GetSale(int id)
         {
             try
@@ -62,15 +70,20 @@ namespace ForrajeriaJovitaAPI.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error al obtener venta {Id}", id);
-                return StatusCode(500, new { message = "Error al obtener venta", error = ex.Message });
+                return StatusCode(500, new
+                {
+                    message = "Error al obtener venta",
+                    error = ex.Message
+                });
             }
         }
 
         // ======================================================================
-        // POST /api/sales  (crear venta)
+        // POST /api/sales  (VENTA INTERNA / CAJA)
         // ======================================================================
         [HttpPost]
-        public async Task<ActionResult<SaleDto>> CreateSale([FromBody] CreateSaleDto dto)
+        public async Task<ActionResult<SaleDto>> CreateSale(
+            [FromBody] CreateSaleDto dto)
         {
             try
             {
@@ -82,9 +95,13 @@ namespace ForrajeriaJovitaAPI.Controllers
 
                 var sale = await _ventaService.CreateSaleAsync(dto);
 
-                _logger.LogInformation("Venta creada correctamente: {SaleId}", sale.Id);
+                _logger.LogInformation(
+                    "Venta creada correctamente: {SaleId}", sale.Id);
 
-                return CreatedAtAction(nameof(GetSale), new { id = sale.Id }, sale);
+                return CreatedAtAction(
+                    nameof(GetSale),
+                    new { id = sale.Id },
+                    sale);
             }
             catch (InvalidOperationException ex)
             {
@@ -94,15 +111,57 @@ namespace ForrajeriaJovitaAPI.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error al crear venta");
-                return StatusCode(500, new { message = "Error al crear venta", error = ex.Message });
+                return StatusCode(500, new
+                {
+                    message = "Error al crear venta",
+                    error = ex.Message
+                });
             }
         }
 
         // ======================================================================
-        // 🆕 PUT /api/sales/{id}  (actualizar envío / estado / etc.)
+        // 🟢 POST /api/sales/public  (VENTA WEB / CARRITO)
         // ======================================================================
-        [HttpPut("{id}")]
-        public async Task<ActionResult<SaleDto>> UpdateSale(int id, [FromBody] UpdateSaleDto dto)
+        [HttpPost("public")]
+        [AllowAnonymous]
+        public async Task<ActionResult<SaleDto>> CreatePublicSale(
+            [FromBody] CreatePublicSaleDto dto)
+        {
+            try
+            {
+                if (dto.Items == null || !dto.Items.Any())
+                    return BadRequest(new { message = "El pedido debe incluir productos." });
+
+                var sale = await _ventaService.CreatePublicSaleAsync(dto);
+
+                _logger.LogInformation(
+                    "Venta pública creada correctamente: {SaleId}", sale.Id);
+
+                return Ok(sale);
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning(ex, "Error de validación en venta pública");
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al crear venta pública");
+                return StatusCode(500, new
+                {
+                    message = "Error al crear venta pública",
+                    error = ex.Message
+                });
+            }
+        }
+
+        // ======================================================================
+        // PUT /api/sales/{id}
+        // ======================================================================
+        [HttpPut("{id:int}")]
+        public async Task<ActionResult<SaleDto>> UpdateSale(
+            int id,
+            [FromBody] UpdateSaleDto dto)
         {
             try
             {
@@ -110,7 +169,8 @@ namespace ForrajeriaJovitaAPI.Controllers
 
                 if (updated == null)
                 {
-                    _logger.LogWarning("Venta {Id} no encontrada al actualizar", id);
+                    _logger.LogWarning(
+                        "Venta {Id} no encontrada al actualizar", id);
                     return NotFound(new { message = "Venta no encontrada" });
                 }
 
@@ -119,35 +179,40 @@ namespace ForrajeriaJovitaAPI.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error al actualizar venta {Id}", id);
-                return StatusCode(500, new { message = "Error al actualizar venta", error = ex.Message });
+                return StatusCode(500, new
+                {
+                    message = "Error al actualizar venta",
+                    error = ex.Message
+                });
             }
         }
 
         // ======================================================================
-        // 🆕 PUT /api/sales/{id}/status  (solo estado: pendiente/pagado/entregado)
-        // ⇨ Encaja con tu frontend: updateOrderStatus(id, status) { status }
+        // PUT /api/sales/{id}/status
         // ======================================================================
         public class UpdateSaleStatusDto
         {
-            public int Status { get; set; }   // 0 = Pendiente, 1 = Pagado, 2 = Entregado
+            public int Status { get; set; } // 0 Pendiente | 1 Pagado | 2 Entregado
         }
 
-        [HttpPut("{id}/status")]
+        [HttpPut("{id:int}/status")]
         public async Task<ActionResult<SaleDto>> UpdateSaleStatus(
             int id,
             [FromBody] UpdateSaleStatusDto dto)
         {
             try
             {
-                // Reusamos el servicio genérico pasando solo PaymentStatus
-                var updated = await _ventaService.UpdateSaleAsync(id, new UpdateSaleDto
-                {
-                    PaymentStatus = dto.Status
-                });
+                var updated = await _ventaService.UpdateSaleAsync(
+                    id,
+                    new UpdateSaleDto
+                    {
+                        PaymentStatus = dto.Status
+                    });
 
                 if (updated == null)
                 {
-                    _logger.LogWarning("Venta {Id} no encontrada al actualizar estado", id);
+                    _logger.LogWarning(
+                        "Venta {Id} no encontrada al actualizar estado", id);
                     return NotFound(new { message = "Venta no encontrada" });
                 }
 
@@ -155,8 +220,13 @@ namespace ForrajeriaJovitaAPI.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error al actualizar estado de venta {Id}", id);
-                return StatusCode(500, new { message = "Error al actualizar estado de la venta", error = ex.Message });
+                _logger.LogError(
+                    ex, "Error al actualizar estado de venta {Id}", id);
+                return StatusCode(500, new
+                {
+                    message = "Error al actualizar estado de la venta",
+                    error = ex.Message
+                });
             }
         }
 
@@ -174,15 +244,21 @@ namespace ForrajeriaJovitaAPI.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error al obtener resumen del día");
-                return StatusCode(500, new { message = "Error al obtener resumen del día", error = ex.Message });
+                return StatusCode(500, new
+                {
+                    message = "Error al obtener resumen del día",
+                    error = ex.Message
+                });
             }
         }
 
         // ======================================================================
         // GET /api/sales/period/{year}/{month}
         // ======================================================================
-        [HttpGet("period/{year}/{month}")]
-        public async Task<ActionResult<IEnumerable<SaleDto>>> GetByPeriod(int year, int month)
+        [HttpGet("period/{year:int}/{month:int}")]
+        public async Task<ActionResult<IEnumerable<SaleDto>>> GetByPeriod(
+            int year,
+            int month)
         {
             try
             {
@@ -193,20 +269,23 @@ namespace ForrajeriaJovitaAPI.Controllers
                 var end = start.AddMonths(1).AddSeconds(-1);
 
                 var sales = await _ventaService.GetAllSalesAsync(start, end, null);
-
                 return Ok(sales);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error al obtener ventas del período");
-                return StatusCode(500, new { message = "Error al obtener ventas del período", error = ex.Message });
+                return StatusCode(500, new
+                {
+                    message = "Error al obtener ventas del período",
+                    error = ex.Message
+                });
             }
         }
 
         // ======================================================================
         // GET /api/sales/seller/{sellerId}
         // ======================================================================
-        [HttpGet("seller/{sellerId}")]
+        [HttpGet("seller/{sellerId:int}")]
         public async Task<ActionResult<IEnumerable<SaleDto>>> GetBySeller(
             int sellerId,
             [FromQuery] DateTime? startDate = null,
@@ -214,13 +293,23 @@ namespace ForrajeriaJovitaAPI.Controllers
         {
             try
             {
-                var sales = await _ventaService.GetAllSalesAsync(startDate, endDate, sellerId);
+                var sales = await _ventaService
+                    .GetAllSalesAsync(startDate, endDate, sellerId);
+
                 return Ok(sales);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error al obtener ventas del vendedor {SellerId}", sellerId);
-                return StatusCode(500, new { message = "Error al obtener ventas del vendedor", error = ex.Message });
+                _logger.LogError(
+                    ex,
+                    "Error al obtener ventas del vendedor {SellerId}",
+                    sellerId);
+
+                return StatusCode(500, new
+                {
+                    message = "Error al obtener ventas del vendedor",
+                    error = ex.Message
+                });
             }
         }
 
@@ -237,7 +326,9 @@ namespace ForrajeriaJovitaAPI.Controllers
                 startDate ??= new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1);
                 endDate ??= DateTime.Now;
 
-                var sales = (await _ventaService.GetAllSalesAsync(startDate, endDate, null)).ToList();
+                var sales = (await _ventaService
+                        .GetAllSalesAsync(startDate, endDate, null))
+                    .ToList();
 
                 var stats = new
                 {
@@ -262,7 +353,11 @@ namespace ForrajeriaJovitaAPI.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error al obtener estadísticas");
-                return StatusCode(500, new { message = "Error al obtener estadísticas", error = ex.Message });
+                return StatusCode(500, new
+                {
+                    message = "Error al obtener estadísticas",
+                    error = ex.Message
+                });
             }
         }
 
@@ -276,7 +371,9 @@ namespace ForrajeriaJovitaAPI.Controllers
         {
             try
             {
-                var sales = (await _ventaService.GetAllSalesAsync(startDate, endDate, null)).ToList();
+                var sales = (await _ventaService
+                        .GetAllSalesAsync(startDate, endDate, null))
+                    .ToList();
 
                 var result = new
                 {
@@ -293,7 +390,11 @@ namespace ForrajeriaJovitaAPI.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error al obtener totales");
-                return StatusCode(500, new { message = "Error al obtener totales", error = ex.Message });
+                return StatusCode(500, new
+                {
+                    message = "Error al obtener totales",
+                    error = ex.Message
+                });
             }
         }
     }
