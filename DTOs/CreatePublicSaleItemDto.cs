@@ -1,4 +1,5 @@
-namespace ForrajeriaJovitaAPI.Dtos
+﻿// CreatePublicSaleItemDto.cs
+namespace ForrajeriaJovitaAPI.DTOs  // ⚠️ DTOs en MAYÚSCULAS
 {
     public class CreatePublicSaleItemDto
     {
@@ -7,3 +8,4 @@ namespace ForrajeriaJovitaAPI.Dtos
         public decimal UnitPrice { get; set; }
     }
 }
+

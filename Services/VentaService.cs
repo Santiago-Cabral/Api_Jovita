@@ -70,6 +70,16 @@ namespace ForrajeriaJovitaAPI.Services
                 decimal subtotal = dto.Items.Sum(i => i.Quantity * i.UnitPrice);
                 decimal total = subtotal + dto.ShippingCost;
 
+                // Convertir método de pago string a enum
+                PaymentMethod paymentMethod = dto.PaymentMethod.ToLower() switch
+                {
+                    "cash" => PaymentMethod.Cash,
+                    "card" => PaymentMethod.Card,
+                    "credit" => PaymentMethod.Credit,
+                    "transfer" => PaymentMethod.Transfer,
+                    _ => PaymentMethod.Cash
+                };
+
                 var sale = new Sale
                 {
                     SoldAt = DateTime.Now,
@@ -78,9 +88,9 @@ namespace ForrajeriaJovitaAPI.Services
                     Total = total,
 
                     DeliveryType = 1,
-                    DeliveryAddress = dto.Customer.Address,
+                    DeliveryAddress = dto.Customer, // Ahora es string
                     DeliveryCost = dto.ShippingCost,
-                    DeliveryNote = $"{dto.Customer.Name} | {dto.Customer.Phone}",
+                    DeliveryNote = "Pedido Web",
 
                     // 0 = Pendiente (Payway confirmará luego)
                     PaymentStatus = 0,
@@ -94,7 +104,7 @@ namespace ForrajeriaJovitaAPI.Services
                 {
                     var product = await _context.Products.FindAsync(item.ProductId);
                     if (product == null)
-                        throw new InvalidOperationException("Producto no encontrado.");
+                        throw new InvalidOperationException($"Producto {item.ProductId} no encontrado.");
 
                     _context.SalesItems.Add(new SaleItem
                     {
@@ -113,7 +123,7 @@ namespace ForrajeriaJovitaAPI.Services
                 _context.SalesPayments.Add(new SalePayment
                 {
                     SaleId = sale.Id,
-                    Method = (PaymentMethod)dto.PaymentMethod,
+                    Method = paymentMethod,
                     Amount = total,
                     Reference = dto.PaymentReference ?? "Pedido Web",
                     CreationDate = DateTime.Now
