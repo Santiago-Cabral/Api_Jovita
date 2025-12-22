@@ -70,15 +70,31 @@ namespace ForrajeriaJovitaAPI.Services
                 decimal subtotal = dto.Items.Sum(i => i.Quantity * i.UnitPrice);
                 decimal total = subtotal + dto.ShippingCost;
 
-                // Convertir método de pago string a enum
-                PaymentMethod paymentMethod = dto.PaymentMethod.ToLower() switch
+                // Convertir método de pago string a enum (si dto.PaymentMethod es string)
+                // Si tu DTO usa int, adaptá esta conversión.
+                PaymentMethod paymentMethod;
+                if (dto.PaymentMethod is null)
                 {
-                    "cash" => PaymentMethod.Cash,
-                    "card" => PaymentMethod.Card,
-                    "credit" => PaymentMethod.Credit,
-                    "transfer" => PaymentMethod.Transfer,
-                    _ => PaymentMethod.Cash
-                };
+                    paymentMethod = PaymentMethod.Cash;
+                }
+                else
+                {
+                    // Si dto.PaymentMethod viene como string ("cash","card",...) manejalo:
+                    // si es un int en string, intenta parsear; si es int en DTO, ajustá.
+                    var pmLower = dto.PaymentMethod.ToString().ToLower();
+                    paymentMethod = pmLower switch
+                    {
+                        "cash" => PaymentMethod.Cash,
+                        "card" => PaymentMethod.Card,
+                        "credit" => PaymentMethod.Credit,
+                        "transfer" => PaymentMethod.Transfer,
+                        _ =>
+                            // fallback: si el valor puede convertirse a int, úsalo; si no, default cash
+                            int.TryParse(pmLower, out var pmInt) && Enum.IsDefined(typeof(PaymentMethod), pmInt)
+                                ? (PaymentMethod)pmInt
+                                : PaymentMethod.Cash
+                    };
+                }
 
                 var sale = new Sale
                 {
@@ -88,7 +104,8 @@ namespace ForrajeriaJovitaAPI.Services
                     Total = total,
 
                     DeliveryType = 1,
-                    DeliveryAddress = dto.Customer, // Ahora es string
+                    // En tu último cambio, dto.Customer es string (dirección completa)
+                    DeliveryAddress = dto.Customer,
                     DeliveryCost = dto.ShippingCost,
                     DeliveryNote = "Pedido Web",
 
@@ -257,11 +274,21 @@ namespace ForrajeriaJovitaAPI.Services
 
             if (sale == null) return null;
 
-            if (dto.DeliveryType.HasValue) sale.DeliveryType = dto.DeliveryType;
-            if (!string.IsNullOrWhiteSpace(dto.DeliveryAddress)) sale.DeliveryAddress = dto.DeliveryAddress;
-            if (dto.DeliveryCost.HasValue) sale.DeliveryCost = dto.DeliveryCost;
-            if (!string.IsNullOrWhiteSpace(dto.DeliveryNote)) sale.DeliveryNote = dto.DeliveryNote;
-            if (dto.PaymentStatus.HasValue) sale.PaymentStatus = dto.PaymentStatus;
+            // Asignaciones seguras: pasamos de nullable a non-nullable usando .Value
+            if (dto.DeliveryType.HasValue)
+                sale.DeliveryType = dto.DeliveryType.Value;
+
+            if (!string.IsNullOrWhiteSpace(dto.DeliveryAddress))
+                sale.DeliveryAddress = dto.DeliveryAddress;
+
+            if (dto.DeliveryCost.HasValue)
+                sale.DeliveryCost = dto.DeliveryCost.Value;
+
+            if (!string.IsNullOrWhiteSpace(dto.DeliveryNote))
+                sale.DeliveryNote = dto.DeliveryNote;
+
+            if (dto.PaymentStatus.HasValue)
+                sale.PaymentStatus = dto.PaymentStatus.Value;
 
             await _context.SaveChangesAsync();
             return MapSaleToDto(sale);
