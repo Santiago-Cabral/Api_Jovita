@@ -82,6 +82,7 @@ namespace ForrajeriaJovitaAPI.Controllers
         // POST /api/sales  (VENTA INTERNA / CAJA)
         // ======================================================================
         [HttpPost]
+        [Authorize]
         public async Task<ActionResult<SaleDto>> CreateSale(
             [FromBody] CreateSaleDto dto)
         {
@@ -95,8 +96,7 @@ namespace ForrajeriaJovitaAPI.Controllers
 
                 var sale = await _ventaService.CreateSaleAsync(dto);
 
-                _logger.LogInformation(
-                    "Venta creada correctamente: {SaleId}", sale.Id);
+                _logger.LogInformation("Venta creada correctamente: {SaleId}", sale.Id);
 
                 return CreatedAtAction(
                     nameof(GetSale),
@@ -159,6 +159,7 @@ namespace ForrajeriaJovitaAPI.Controllers
         // PUT /api/sales/{id}
         // ======================================================================
         [HttpPut("{id:int}")]
+        [Authorize]
         public async Task<ActionResult<SaleDto>> UpdateSale(
             int id,
             [FromBody] UpdateSaleDto dto)
@@ -169,8 +170,7 @@ namespace ForrajeriaJovitaAPI.Controllers
 
                 if (updated == null)
                 {
-                    _logger.LogWarning(
-                        "Venta {Id} no encontrada al actualizar", id);
+                    _logger.LogWarning("Venta {Id} no encontrada al actualizar", id);
                     return NotFound(new { message = "Venta no encontrada" });
                 }
 
@@ -196,6 +196,7 @@ namespace ForrajeriaJovitaAPI.Controllers
         }
 
         [HttpPut("{id:int}/status")]
+        [Authorize]
         public async Task<ActionResult<SaleDto>> UpdateSaleStatus(
             int id,
             [FromBody] UpdateSaleStatusDto dto)
@@ -220,8 +221,8 @@ namespace ForrajeriaJovitaAPI.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(
-                    ex, "Error al actualizar estado de venta {Id}", id);
+                _logger.LogError(ex,
+                    "Error al actualizar estado de venta {Id}", id);
                 return StatusCode(500, new
                 {
                     message = "Error al actualizar estado de la venta",
@@ -234,6 +235,7 @@ namespace ForrajeriaJovitaAPI.Controllers
         // GET /api/sales/today
         // ======================================================================
         [HttpGet("today")]
+        [Authorize]
         public async Task<ActionResult<object>> GetToday()
         {
             try
@@ -256,6 +258,7 @@ namespace ForrajeriaJovitaAPI.Controllers
         // GET /api/sales/period/{year}/{month}
         // ======================================================================
         [HttpGet("period/{year:int}/{month:int}")]
+        [Authorize]
         public async Task<ActionResult<IEnumerable<SaleDto>>> GetByPeriod(
             int year,
             int month)
@@ -286,6 +289,7 @@ namespace ForrajeriaJovitaAPI.Controllers
         // GET /api/sales/seller/{sellerId}
         // ======================================================================
         [HttpGet("seller/{sellerId:int}")]
+        [Authorize]
         public async Task<ActionResult<IEnumerable<SaleDto>>> GetBySeller(
             int sellerId,
             [FromQuery] DateTime? startDate = null,
@@ -317,6 +321,7 @@ namespace ForrajeriaJovitaAPI.Controllers
         // GET /api/sales/statistics
         // ======================================================================
         [HttpGet("statistics")]
+        [Authorize]
         public async Task<ActionResult<object>> GetStatistics(
             [FromQuery] DateTime? startDate = null,
             [FromQuery] DateTime? endDate = null)
@@ -365,6 +370,7 @@ namespace ForrajeriaJovitaAPI.Controllers
         // GET /api/sales/total
         // ======================================================================
         [HttpGet("total")]
+        [Authorize]
         public async Task<ActionResult<object>> GetTotal(
             [FromQuery] DateTime startDate,
             [FromQuery] DateTime endDate)
@@ -399,4 +405,3 @@ namespace ForrajeriaJovitaAPI.Controllers
         }
     }
 }
-
