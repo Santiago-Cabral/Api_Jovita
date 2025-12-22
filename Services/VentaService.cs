@@ -315,7 +315,7 @@ namespace ForrajeriaJovitaAPI.Services
                 Items = s.SalesItems.Select(i => new SaleItemDto
                 {
                     ProductId = i.ProductId,
-                    ProductName = i.Product.Name,
+                    ProductName = i.Product?.Name ?? "Producto",
                     Quantity = i.Quantity,
                     UnitPrice = i.UnitPrice,
                     Discount = i.Discount,
@@ -327,7 +327,7 @@ namespace ForrajeriaJovitaAPI.Services
                     Method = (int)p.Method,
                     MethodName = p.Method.ToString(),
                     Amount = p.Amount,
-                    Reference = p.Reference
+                    Reference = p.Reference ?? string.Empty
                 }).ToList()
             };
         }
