@@ -53,13 +53,9 @@ builder.Services.AddScoped<ICategoryService, CategoryService>();
 builder.Services.AddScoped<ICheckoutService, CheckoutService>();
 builder.Services.AddScoped<IClientAccountService, ClientAccountService>();
 
-// VentaService con ILogger explícito
-builder.Services.AddScoped<IVentaService, VentaService>(provider =>
-{
-    var context = provider.GetRequiredService<ForrajeriaContext>();
-    var logger = provider.GetRequiredService<ILogger<VentaService>>();
-    return new VentaService(context, logger);
-});
+// VentaService registration
+// Standard registration is sufficient since VentaService only needs ForrajeriaContext
+builder.Services.AddScoped<IVentaService, VentaService>();
 
 // ============================================================
 // CONTROLLERS / JSON
