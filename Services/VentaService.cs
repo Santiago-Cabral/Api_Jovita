@@ -1,4 +1,8 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
 using ForrajeriaJovitaAPI.Data;
 using ForrajeriaJovitaAPI.DTOs;
 using ForrajeriaJovitaAPI.Models;
@@ -67,15 +71,109 @@ namespace ForrajeriaJovitaAPI.Services
 
             try
             {
-                decimal subtotal = dto.Items.Sum(i => i.Quantity * i.UnitPrice);
-                decimal total = subtotal + dto.ShippingCost;
+                // 1) Validaciones básicas del DTO
+                if (dto.Items == null || !dto.Items.Any())
+                    throw new InvalidOperationException("El pedido debe incluir productos.");
 
-                // Convertir método de pago string a enum (si dto.PaymentMethod es string)
-                PaymentMethod paymentMethod;
-                if (dto.PaymentMethod is null)
+                foreach (var it in dto.Items)
                 {
-                    paymentMethod = PaymentMethod.Cash;
+                    if (it.Quantity <= 0)
+                        throw new InvalidOperationException($"Quantity inválida para producto {it.ProductId}.");
+                    if (it.UnitPrice < 0)
+                        throw new InvalidOperationException($"UnitPrice inválido para producto {it.ProductId}.");
                 }
+
+                // 2) Calcular subtotal/total a partir de los items
+                decimal subtotal = dto.Items.Sum(i => i.Quantity * i.UnitPrice);
+                decimal discountTotal = 0m; // DTO actual no trae descuentos por item
+                decimal total = subtotal + dto.ShippingCost - discountTotal;
+                if (total < 0) total = 0m;
+
+                // 3) Determinar usuario sistema (seller) — preferir admin@jovita.com, fallback role 1
+                var systemUser = await _context.Users
+                    .FirstOrDefaultAsync(u => u.Email == "admin@jovita.com" || u.UserName == "admin@jovita.com");
+
+                if (systemUser == null)
+                {
+                    systemUser = await _context.Users.FirstOrDefaultAsync(u => u.RoleId == 1);
+                }
+
+                if (systemUser == null)
+                    throw new InvalidOperationException("No se encontró usuario sistema (admin). Crear usuario 'admin@jovita.com' o definir un usuario con RoleId = 1.");
+
+                // 4) Buscar una CashSession para asociar el movimiento de caja (usar la última)
+                var activeSession = await _context.CashSessions
+                    .OrderByDescending(s => s.Id)
+                    .FirstOrDefaultAsync();
+
+                if (activeSession == null)
+                    throw new InvalidOperationException("No se encontró CashSession. Crear/activar una sesión de caja antes de procesar ventas web.");
+
+                // 5) Crear CashMovement completo (no debe quedar con campos NULL)
+                var cashMovement = new CashMovement
+                {
+                    CashSessionId = activeSession.Id,
+                    Type = CashMovementType.Sale,
+                    Amount = total,
+                    Description = $"Venta Web - {DateTime.Now:yyyy-MM-dd HH:mm:ss} - {dto.PaymentReference ?? "Pedido Web"}",
+                    CreationDate = DateTime.Now,
+                    TypeOfSale = "Web",
+                    MovementCancelled = false,
+                    // ClientId queda NULL si no hay cliente (puedes setear un cliente genérico si lo deseás)
+                    ClientId = null
+                };
+
+                _context.CashMovements.Add(cashMovement);
+                await _context.SaveChangesAsync(); // obtener cashMovement.Id
+
+                // 6) Crear la entidad Sale asociada al CashMovement y al usuario sistema
+                var sale = new Sale
+                {
+                    CashMovementId = cashMovement.Id,
+                    SellerUserId = systemUser.Id,
+                    SoldAt = DateTime.Now,
+                    Subtotal = subtotal,
+                    DiscountTotal = discountTotal,
+                    Total = total,
+                    DeliveryType = 1,
+                    DeliveryAddress = dto.Customer,
+                    DeliveryCost = dto.ShippingCost,
+                    DeliveryNote = dto.PaymentReference ?? "Pedido Web",
+                    PaymentStatus = 0, // pendiente por defecto
+                    CreationDate = DateTime.Now
+                };
+
+                _context.Sales.Add(sale);
+                await _context.SaveChangesAsync(); // obtener sale.Id
+
+                // 7) Agregar items (verificar existencia de producto)
+                foreach (var item in dto.Items)
+                {
+                    var product = await _context.Products.FindAsync(item.ProductId);
+                    if (product == null)
+                        throw new InvalidOperationException($"Producto {item.ProductId} no encontrado.");
+
+                    // Si preferís usar precio desde BD: var unitPrice = product.RetailPrice;
+                    var unitPrice = item.UnitPrice;
+
+                    _context.SalesItems.Add(new SaleItem
+                    {
+                        SaleId = sale.Id,
+                        ProductId = item.ProductId,
+                        Quantity = item.Quantity,
+                        UnitPrice = unitPrice,
+                        Discount = 0,
+                        ConversionToBase = 1,
+                        DeductedBaseQuantity = item.Quantity,
+                        CreationDate = DateTime.Now
+                    });
+                }
+
+                // 8) Registrar pago(s) — DTO público trae solo PaymentMethod/PaymentReference
+                decimal paymentsSum = 0m;
+                PaymentMethod paymentMethod;
+                if (string.IsNullOrWhiteSpace(dto.PaymentMethod))
+                    paymentMethod = PaymentMethod.Cash;
                 else
                 {
                     var pmLower = dto.PaymentMethod.ToString().ToLower();
@@ -85,66 +183,39 @@ namespace ForrajeriaJovitaAPI.Services
                         "card" => PaymentMethod.Card,
                         "credit" => PaymentMethod.Credit,
                         "transfer" => PaymentMethod.Transfer,
-                        _ =>
-                            // fallback: si el valor puede convertirse a int, úsalo; si no, default cash
-                            int.TryParse(pmLower, out var pmInt) && Enum.IsDefined(typeof(PaymentMethod), pmInt)
-                                ? (PaymentMethod)pmInt
-                                : PaymentMethod.Cash
+                        _ => PaymentMethod.Cash
                     };
                 }
 
-                var sale = new Sale
+                if (total > 0)
                 {
-                    SoldAt = DateTime.Now,
-                    Subtotal = subtotal,
-                    DiscountTotal = 0,
-                    Total = total,
-
-                    DeliveryType = 1,
-                    DeliveryAddress = dto.Customer,
-                    DeliveryCost = dto.ShippingCost,
-                    DeliveryNote = "Pedido Web",
-
-                    // 0 = Pendiente (Payway confirmará luego)
-                    PaymentStatus = 0,
-                    CreationDate = DateTime.Now
-                };
-
-                _context.Sales.Add(sale);
-                await _context.SaveChangesAsync();
-
-                foreach (var item in dto.Items)
-                {
-                    var product = await _context.Products.FindAsync(item.ProductId);
-                    if (product == null)
-                        throw new InvalidOperationException($"Producto {item.ProductId} no encontrado.");
-
-                    _context.SalesItems.Add(new SaleItem
+                    var salePayment = new SalePayment
                     {
                         SaleId = sale.Id,
-                        ProductId = item.ProductId,
-                        Quantity = item.Quantity,
-                        UnitPrice = item.UnitPrice,
-                        Discount = 0,
-                        ConversionToBase = 1,
-                        DeductedBaseQuantity = item.Quantity,
+                        Method = paymentMethod,
+                        Amount = total,
+                        Reference = dto.PaymentReference ?? "Pedido Web",
                         CreationDate = DateTime.Now
-                    });
+                    };
+                    _context.SalesPayments.Add(salePayment);
+                    paymentsSum += total;
                 }
 
-                // Pago web (Payway / Transferencia / etc.)
-                _context.SalesPayments.Add(new SalePayment
-                {
-                    SaleId = sale.Id,
-                    Method = paymentMethod,
-                    Amount = total,
-                    Reference = dto.PaymentReference ?? "Pedido Web",
-                    CreationDate = DateTime.Now
-                });
+                // 9) Guardar items y pagos
+                await _context.SaveChangesAsync();
+
+                // 10) Actualizar PaymentStatus en la venta según pagos
+                if (paymentsSum >= total && total > 0)
+                    sale.PaymentStatus = 1; // pagado
+                else if (paymentsSum > 0 && paymentsSum < total)
+                    sale.PaymentStatus = 2; // parcial
+                else
+                    sale.PaymentStatus = 0; // pendiente
 
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
 
+                // 11) Retornar DTO completo
                 return (await GetSaleByIdAsync(sale.Id))!;
             }
             catch
@@ -155,7 +226,7 @@ namespace ForrajeriaJovitaAPI.Services
         }
 
         // ============================================================
-        // CREATE SALE (CAJA / INTERNA)
+        // CREATE SALE (CAJA / INTERNA) - mantiene lógica previa
         // ============================================================
         public async Task<SaleDto> CreateSaleAsync(CreateSaleDto dto)
         {
@@ -270,7 +341,6 @@ namespace ForrajeriaJovitaAPI.Services
 
             if (sale == null) return null;
 
-            // Asignaciones seguras: pasamos de nullable a non-nullable usando .Value
             if (dto.DeliveryType.HasValue)
                 sale.DeliveryType = dto.DeliveryType.Value;
 
@@ -334,7 +404,6 @@ namespace ForrajeriaJovitaAPI.Services
                 DeliveryCost = s.DeliveryCost,
                 DeliveryNote = s.DeliveryNote,
                 PaymentStatus = s.PaymentStatus,
-                // PaymentStatusName is read-only in DTO, inferred from PaymentStatus
 
                 Items = s.SalesItems.Select(i => new SaleItemDto
                 {
@@ -357,3 +426,4 @@ namespace ForrajeriaJovitaAPI.Services
         }
     }
 }
+
