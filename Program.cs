@@ -11,6 +11,14 @@ using Microsoft.IdentityModel.Tokens;
 var builder = WebApplication.CreateBuilder(args);
 
 // ============================================================
+// LOGGING CONFIGURATION
+// ============================================================
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+builder.Logging.AddDebug();
+builder.Logging.SetMinimumLevel(LogLevel.Information);
+
+// ============================================================
 // DATABASE
 // ============================================================
 builder.Services.AddDbContext<ForrajeriaContext>(options =>
@@ -38,13 +46,20 @@ builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
 
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IProductoService, ProductoService>();
-builder.Services.AddScoped<IVentaService, VentaService>();
 builder.Services.AddScoped<IStockService, StockService>();
 builder.Services.AddScoped<IClientService, ClientService>();
 builder.Services.AddScoped<IBranchService, BranchService>();
 builder.Services.AddScoped<ICategoryService, CategoryService>();
 builder.Services.AddScoped<ICheckoutService, CheckoutService>();
 builder.Services.AddScoped<IClientAccountService, ClientAccountService>();
+
+// VentaService con ILogger explícito
+builder.Services.AddScoped<IVentaService, VentaService>(provider =>
+{
+    var context = provider.GetRequiredService<ForrajeriaContext>();
+    var logger = provider.GetRequiredService<ILogger<VentaService>>();
+    return new VentaService(context, logger);
+});
 
 // ============================================================
 // CONTROLLERS / JSON
@@ -54,6 +69,7 @@ builder.Services.AddControllers()
     {
         o.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
         o.JsonSerializerOptions.WriteIndented = true;
+        o.JsonSerializerOptions.PropertyNamingPolicy = null; // Mantener PascalCase
     });
 
 // ============================================================
@@ -68,11 +84,10 @@ builder.Services.AddCors(options =>
                 "http://localhost:5173",                 // Dev local
                 "http://localhost:3000",                 // Otro dev
                 "https://forrajeria-jovita.vercel.app"   // Frontend en producción
-                                                         // agrega aquí tu dominio propio si luego lo tienes
-                                                         // "https://tu-dominio.com"
             )
             .AllowAnyHeader()
-            .AllowAnyMethod();
+            .AllowAnyMethod()
+            .AllowCredentials();
     });
 });
 
@@ -137,8 +152,15 @@ app.MapGet("/api/health", () =>
     {
         status = "OK",
         message = "Forrajeria Jovita API online",
-        time = DateTime.UtcNow
+        time = DateTime.UtcNow,
+        environment = app.Environment.EnvironmentName
     });
 });
+
+// Log startup info
+var logger = app.Services.GetRequiredService<ILogger<Program>>();
+logger.LogInformation("🚀 Forrajeria Jovita API iniciada");
+logger.LogInformation("Environment: {Environment}", app.Environment.EnvironmentName);
+logger.LogInformation("CORS habilitado para: http://localhost:5173, https://forrajeria-jovita.vercel.app");
 
 app.Run();
