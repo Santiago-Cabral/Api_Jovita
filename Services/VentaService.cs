@@ -2,19 +2,16 @@
 using ForrajeriaJovitaAPI.Data;
 using ForrajeriaJovitaAPI.DTOs;
 using ForrajeriaJovitaAPI.Models;
-using Microsoft.Extensions.Logging;
 
 namespace ForrajeriaJovitaAPI.Services
 {
     public class VentaService : IVentaService
     {
         private readonly ForrajeriaContext _context;
-        private readonly ILogger<VentaService>? _logger;
 
-        public VentaService(ForrajeriaContext context, ILogger<VentaService>? logger = null)
+        public VentaService(ForrajeriaContext context)
         {
             _context = context;
-            _logger = logger;
         }
 
         // ============================================================
@@ -70,53 +67,30 @@ namespace ForrajeriaJovitaAPI.Services
 
             try
             {
-                // Log para debug
-                _logger?.LogInformation(
-                    "CreatePublicSaleAsync - Customer: {Customer}, Items: {ItemCount}, PaymentMethod: {PaymentMethod}",
-                    dto.Customer,
-                    dto.Items?.Count ?? 0,
-                    dto.PaymentMethod
-                );
-
-                // Validaciones
-                if (dto.Items == null || !dto.Items.Any())
-                {
-                    _logger?.LogWarning("Intento de crear venta sin items");
-                    throw new InvalidOperationException("Items vacío: la orden debe contener productos.");
-                }
-
-                if (string.IsNullOrWhiteSpace(dto.Customer))
-                {
-                    _logger?.LogWarning("Intento de crear venta sin customer/dirección");
-                    throw new InvalidOperationException("Customer vacío: la orden requiere una dirección.");
-                }
-
                 decimal subtotal = dto.Items.Sum(i => i.Quantity * i.UnitPrice);
                 decimal total = subtotal + dto.ShippingCost;
 
-                // Convertir método de pago string a enum
+                // Convertir método de pago string a enum (si dto.PaymentMethod es string)
                 PaymentMethod paymentMethod;
-
-                if (string.IsNullOrWhiteSpace(dto.PaymentMethod))
+                if (dto.PaymentMethod is null)
                 {
                     paymentMethod = PaymentMethod.Cash;
-                    _logger?.LogInformation("PaymentMethod vacío, usando Cash por defecto");
                 }
                 else
                 {
-                    var pmLower = dto.PaymentMethod.Trim().ToLower();
+                    var pmLower = dto.PaymentMethod.ToString().ToLower();
                     paymentMethod = pmLower switch
                     {
                         "cash" => PaymentMethod.Cash,
                         "card" => PaymentMethod.Card,
                         "credit" => PaymentMethod.Credit,
                         "transfer" => PaymentMethod.Transfer,
-                        _ => int.TryParse(pmLower, out var pmInt) && Enum.IsDefined(typeof(PaymentMethod), pmInt)
-                            ? (PaymentMethod)pmInt
-                            : PaymentMethod.Cash
+                        _ =>
+                            // fallback: si el valor puede convertirse a int, úsalo; si no, default cash
+                            int.TryParse(pmLower, out var pmInt) && Enum.IsDefined(typeof(PaymentMethod), pmInt)
+                                ? (PaymentMethod)pmInt
+                                : PaymentMethod.Cash
                     };
-
-                    _logger?.LogInformation("PaymentMethod convertido: {Method} -> {Enum}", dto.PaymentMethod, paymentMethod);
                 }
 
                 var sale = new Sale
@@ -131,24 +105,19 @@ namespace ForrajeriaJovitaAPI.Services
                     DeliveryCost = dto.ShippingCost,
                     DeliveryNote = "Pedido Web",
 
-                    PaymentStatus = 0, // Pendiente
+                    // 0 = Pendiente (Payway confirmará luego)
+                    PaymentStatus = 0,
                     CreationDate = DateTime.Now
                 };
 
                 _context.Sales.Add(sale);
                 await _context.SaveChangesAsync();
 
-                _logger?.LogInformation("Sale creado con ID: {SaleId}", sale.Id);
-
-                // Agregar items
                 foreach (var item in dto.Items)
                 {
                     var product = await _context.Products.FindAsync(item.ProductId);
                     if (product == null)
-                    {
-                        _logger?.LogError("Producto no encontrado: {ProductId}", item.ProductId);
                         throw new InvalidOperationException($"Producto {item.ProductId} no encontrado.");
-                    }
 
                     _context.SalesItems.Add(new SaleItem
                     {
@@ -161,16 +130,9 @@ namespace ForrajeriaJovitaAPI.Services
                         DeductedBaseQuantity = item.Quantity,
                         CreationDate = DateTime.Now
                     });
-
-                    _logger?.LogInformation(
-                        "SaleItem agregado: ProductId={ProductId}, Quantity={Quantity}, UnitPrice={UnitPrice}",
-                        item.ProductId,
-                        item.Quantity,
-                        item.UnitPrice
-                    );
                 }
 
-                // Agregar pago
+                // Pago web (Payway / Transferencia / etc.)
                 _context.SalesPayments.Add(new SalePayment
                 {
                     SaleId = sale.Id,
@@ -180,25 +142,14 @@ namespace ForrajeriaJovitaAPI.Services
                     CreationDate = DateTime.Now
                 });
 
-                _logger?.LogInformation("SalePayment agregado: Method={Method}, Amount={Amount}", paymentMethod, total);
-
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
 
-                _logger?.LogInformation("Venta pública creada exitosamente: {SaleId}", sale.Id);
-
                 return (await GetSaleByIdAsync(sale.Id))!;
             }
-            catch (Exception ex)
+            catch
             {
                 await transaction.RollbackAsync();
-                _logger?.LogError(
-                    ex,
-                    "Error al crear venta pública. Customer: {Customer}, Items: {ItemCount}, PaymentMethod: {PaymentMethod}",
-                    dto.Customer,
-                    dto.Items?.Count ?? 0,
-                    dto.PaymentMethod
-                );
                 throw;
             }
         }
@@ -319,6 +270,7 @@ namespace ForrajeriaJovitaAPI.Services
 
             if (sale == null) return null;
 
+            // Asignaciones seguras: pasamos de nullable a non-nullable usando .Value
             if (dto.DeliveryType.HasValue)
                 sale.DeliveryType = dto.DeliveryType.Value;
 
@@ -382,13 +334,7 @@ namespace ForrajeriaJovitaAPI.Services
                 DeliveryCost = s.DeliveryCost,
                 DeliveryNote = s.DeliveryNote,
                 PaymentStatus = s.PaymentStatus,
-                PaymentStatusName = s.PaymentStatus switch
-                {
-                    0 => "Pendiente",
-                    1 => "Pagado",
-                    2 => "Entregado",
-                    _ => "Desconocido"
-                },
+                // PaymentStatusName is read-only in DTO, inferred from PaymentStatus
 
                 Items = s.SalesItems.Select(i => new SaleItemDto
                 {
