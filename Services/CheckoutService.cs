@@ -93,20 +93,29 @@ namespace ForrajeriaJovitaAPI.Services
             var subtotal = 0m;
             var discountTotal = 0m;
 
+            // Validaciones y cálculo del subtotal usando cantidades enteras
             foreach (var item in request.Items)
             {
+                // Validar que la cantidad sea un entero positivo
+                if (item.Quantity <= 0)
+                    throw new Exception($"Cantidad inválida en producto ID {item.ProductId}");
+
+                // Si item.Quantity es decimal: exigir que sea entero
+                if (item.Quantity % 1 != 0)
+                    throw new Exception($"Cantidad no entera para producto ID {item.ProductId}. Debe ser un número entero.");
+
+                var qty = (int)item.Quantity; // conversión segura
+
                 var product = products.First(p => p.Id == item.ProductId);
                 var stockEntry = stocks.FirstOrDefault(s => s.ProductId == item.ProductId);
 
                 var stockDisponible = stockEntry?.Quantity ?? 0;
 
-                if (item.Quantity <= 0)
-                    throw new Exception($"Cantidad inválida en producto ID {item.ProductId}");
-
-                if (stockDisponible < item.Quantity)
+                if (stockDisponible < qty)
                     throw new Exception($"Stock insuficiente: {product.Name}");
 
-                subtotal += product.RetailPrice * item.Quantity;
+                // Calcular subtotal con la cantidad entera
+                subtotal += product.RetailPrice * qty;
             }
 
             var totalCalculado = subtotal - discountTotal;
@@ -140,7 +149,9 @@ namespace ForrajeriaJovitaAPI.Services
                     Subtotal = subtotal,
                     DiscountTotal = discountTotal,
                     Total = request.Total,
-                    CreationDate = DateTime.UtcNow
+                    CreationDate = DateTime.UtcNow,
+                    // si tenés clientId: asignalo (si deseas)
+                    ClientId = clientId ?? 0
                 };
 
                 _context.Sales.Add(sale);
@@ -152,21 +163,24 @@ namespace ForrajeriaJovitaAPI.Services
                     var product = products.First(p => p.Id == item.ProductId);
                     var stockEntry = stocks.First(s => s.ProductId == item.ProductId);
 
+                    var qty = (int)item.Quantity; // ya validado arriba
+
                     _context.SalesItems.Add(new SaleItem
                     {
                         SaleId = sale.Id,
                         ProductId = product.Id,
-                        Quantity = item.Quantity,
+                        Quantity = qty,
                         UnitPrice = product.RetailPrice,
                         Discount = 0,
                         BranchName = null,
                         CreationDate = DateTime.UtcNow,
                         ConversionToBase = 1,
-                        DeductedBaseQuantity = item.Quantity,
+                        DeductedBaseQuantity = qty,
                         ProductUnitId = null
                     });
 
-                    stockEntry.Quantity -= item.Quantity;
+                    // ajustar stock (resta segura: stockEntry.Quantity puede ser decimal o int)
+                    stockEntry.Quantity -= qty;
                 }
 
                 await _context.SaveChangesAsync();
