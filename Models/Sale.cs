@@ -1,30 +1,36 @@
+using System;
+using System.Collections.Generic;
+
 namespace ForrajeriaJovitaAPI.Models
 {
     public class Sale
     {
         public int Id { get; set; }
+
+        // FK hacia CashMovements
         public int CashMovementId { get; set; }
-        public DateTime SoldAt { get; set; }
+        public CashMovement? CashMovement { get; set; }
+
+        public int? ClientId { get; set; }     // NUEVO: referencia al cliente
+        public Client? Client { get; set; }
+
         public int SellerUserId { get; set; }
+        public User? SellerUser { get; set; }
+
+        public DateTime SoldAt { get; set; }
         public decimal Subtotal { get; set; }
         public decimal DiscountTotal { get; set; }
         public decimal Total { get; set; }
 
-        public DateTime CreationDate { get; set; } = DateTime.Now;
-
-        // CAMPOS DE ENTREGA (COINCIDEN CON LA BD)
-        public int? DeliveryType { get; set; }      // 0: retiro, 1: envío
+        public int? DeliveryType { get; set; }
         public string? DeliveryAddress { get; set; }
         public decimal? DeliveryCost { get; set; }
         public string? DeliveryNote { get; set; }
 
-        // ESTADO DE PAGO
-        public int PaymentStatus { get; set; } = 0; // 0: pendiente, 1: pagado, 2: parcial
+        public int PaymentStatus { get; set; }
+        public DateTime CreationDate { get; set; } = DateTime.Now;
 
-        // Navegación
-        public CashMovement CashMovement { get; set; } = null!;
-        public User SellerUser { get; set; } = null!;
-        public ICollection<SaleItem> SalesItems { get; set; } = new List<SaleItem>();
-        public ICollection<SalePayment> SalesPayments { get; set; } = new List<SalePayment>();
+        public virtual ICollection<SaleItem> SalesItems { get; set; } = new List<SaleItem>();
+        public virtual ICollection<SalePayment> SalesPayments { get; set; } = new List<SalePayment>();
     }
 }

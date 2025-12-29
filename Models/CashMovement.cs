@@ -1,35 +1,32 @@
 using System;
-using System.Collections.Generic; // Necesario para ICollection
+using System.Collections.Generic;
 
 namespace ForrajeriaJovitaAPI.Models
 {
+    public enum CashMovementType
+    {
+        Sale = 1,
+        Other = 7
+    }
+
     public class CashMovement
     {
         public int Id { get; set; }
         public int CashSessionId { get; set; }
+        public virtual CashSession? CashSession { get; set; }
 
         public CashMovementType Type { get; set; }
-
         public decimal Amount { get; set; }
         public string? Description { get; set; }
         public DateTime CreationDate { get; set; } = DateTime.Now;
 
-        // Propiedades que agregaste anteriormente
         public string? TypeOfSale { get; set; }
         public bool MovementCancelled { get; set; } = false;
+
+        // Opcional: asignar cliente al movimiento para trazabilidad
         public int? ClientId { get; set; }
-
-        // --- PROPIEDADES DE NAVEGACIÓN (Faltaban estas) ---
-
-        // 1. Relación con el Cliente (ya la tenías, la dejo aquí)
         public Client? Client { get; set; }
 
-        // 2. Relación con la Sesión de Caja (CORRECCIÓN DEL ERROR LÍNEA 71)
-        // El contexto espera un objeto CashSession, no solo el ID.
-        public virtual CashSession? CashSession { get; set; }
-
-        // 3. Relación con Ventas (CORRECCIÓN DEL ERROR LÍNEA 227)
-        // El contexto espera una lista o colección de ventas asociadas a este movimiento.
         public virtual ICollection<Sale> Sales { get; set; } = new List<Sale>();
     }
 }
