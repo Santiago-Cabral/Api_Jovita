@@ -3,11 +3,7 @@ using System.Collections.Generic;
 
 namespace ForrajeriaJovitaAPI.Models
 {
-    public enum CashMovementType
-    {
-        Sale = 1,
-        Other = 7
-    }
+   
 
     public class CashMovement
     {
