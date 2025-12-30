@@ -173,9 +173,8 @@ namespace ForrajeriaJovitaAPI.Services
                     Description = $"Venta Web - {DateTime.Now:yyyy-MM-dd HH:mm:ss} - {dto.PaymentReference ?? "Pedido Web"}",
                     CreationDate = DateTime.Now,
                     TypeOfSale = "Web",
-                    MovementCancelled = false,
-                    // ClientId queda NULL si no hay cliente (puedes setear un cliente genérico si lo deseás)
-                    ClientId = null
+                    MovementCancelled = false
+                    // <--- REMOVED: no asignamos ClientId porque el modelo CashMovement no la tiene
                 };
 
                 _context.CashMovements.Add(cashMovement);
