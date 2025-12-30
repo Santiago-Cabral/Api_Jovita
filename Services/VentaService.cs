@@ -19,18 +19,14 @@ namespace ForrajeriaJovitaAPI.Services
         }
 
         // ============================================================
-        // GET ALL SALES
+        // GET ALL SALES - Proyección a DTO (evita materialización problemáticas)
         // ============================================================
         public async Task<IEnumerable<SaleDto>> GetAllSalesAsync(
             DateTime? startDate = null,
             DateTime? endDate = null,
             int? sellerId = null)
         {
-            var query = _context.Sales
-                .Include(s => s.SellerUser)
-                .Include(s => s.SalesItems).ThenInclude(i => i.Product)
-                .Include(s => s.SalesPayments)
-                .AsQueryable();
+            var query = _context.Sales.AsQueryable();
 
             if (startDate.HasValue)
                 query = query.Where(s => s.SoldAt >= startDate.Value);
@@ -41,25 +37,84 @@ namespace ForrajeriaJovitaAPI.Services
             if (sellerId.HasValue)
                 query = query.Where(s => s.SellerUserId == sellerId.Value);
 
-            var sales = await query
+            // Proyección directa a DTOs para evitar problemas de materialización
+            var projected = await query
                 .OrderByDescending(s => s.SoldAt)
+                .Select(s => new SaleDto
+                {
+                    Id = s.Id,
+                    SoldAt = s.SoldAt,
+                    SellerName = s.SellerUser != null ? s.SellerUser.Name + " " + s.SellerUser.LastName : "Web",
+                    Subtotal = s.Subtotal,
+                    DiscountTotal = s.DiscountTotal,
+                    Total = s.Total,
+                    DeliveryType = s.DeliveryType,
+                    DeliveryAddress = s.DeliveryAddress,
+                    DeliveryCost = s.DeliveryCost,
+                    DeliveryNote = s.DeliveryNote,
+                    PaymentStatus = s.PaymentStatus,
+                    Items = s.SalesItems.Select(i => new SaleItemDto
+                    {
+                        ProductId = i.ProductId,
+                        ProductName = i.Product != null ? i.Product.Name : "Producto",
+                        Quantity = i.Quantity,
+                        UnitPrice = i.UnitPrice,
+                        Discount = i.Discount,
+                        Total = (i.Quantity * i.UnitPrice) - i.Discount
+                    }).ToList(),
+                    Payments = s.SalesPayments.Select(p => new SalePaymentDto
+                    {
+                        Method = (int)p.Method,
+                        MethodName = p.Method.ToString(),
+                        Amount = p.Amount,
+                        Reference = p.Reference ?? string.Empty
+                    }).ToList()
+                })
                 .ToListAsync();
 
-            return sales.Select(MapSaleToDto);
+            return projected;
         }
 
         // ============================================================
-        // GET SALE BY ID
+        // GET SALE BY ID (proyección)
         // ============================================================
         public async Task<SaleDto?> GetSaleByIdAsync(int id)
         {
-            var sale = await _context.Sales
-                .Include(s => s.SellerUser)
-                .Include(s => s.SalesItems).ThenInclude(i => i.Product)
-                .Include(s => s.SalesPayments)
-                .FirstOrDefaultAsync(s => s.Id == id);
+            var dto = await _context.Sales
+                .Where(s => s.Id == id)
+                .Select(s => new SaleDto
+                {
+                    Id = s.Id,
+                    SoldAt = s.SoldAt,
+                    SellerName = s.SellerUser != null ? s.SellerUser.Name + " " + s.SellerUser.LastName : "Web",
+                    Subtotal = s.Subtotal,
+                    DiscountTotal = s.DiscountTotal,
+                    Total = s.Total,
+                    DeliveryType = s.DeliveryType,
+                    DeliveryAddress = s.DeliveryAddress,
+                    DeliveryCost = s.DeliveryCost,
+                    DeliveryNote = s.DeliveryNote,
+                    PaymentStatus = s.PaymentStatus,
+                    Items = s.SalesItems.Select(i => new SaleItemDto
+                    {
+                        ProductId = i.ProductId,
+                        ProductName = i.Product != null ? i.Product.Name : "Producto",
+                        Quantity = i.Quantity,
+                        UnitPrice = i.UnitPrice,
+                        Discount = i.Discount,
+                        Total = (i.Quantity * i.UnitPrice) - i.Discount
+                    }).ToList(),
+                    Payments = s.SalesPayments.Select(p => new SalePaymentDto
+                    {
+                        Method = (int)p.Method,
+                        MethodName = p.Method.ToString(),
+                        Amount = p.Amount,
+                        Reference = p.Reference ?? string.Empty
+                    }).ToList()
+                })
+                .FirstOrDefaultAsync();
 
-            return sale == null ? null : MapSaleToDto(sale);
+            return dto;
         }
 
         // ============================================================
@@ -215,7 +270,7 @@ namespace ForrajeriaJovitaAPI.Services
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
 
-                // 11) Retornar DTO completo
+                // 11) Retornar DTO completo (usamos la proyección GetSaleByIdAsync)
                 return (await GetSaleByIdAsync(sale.Id))!;
             }
             catch
@@ -383,7 +438,7 @@ namespace ForrajeriaJovitaAPI.Services
         }
 
         // ============================================================
-        // MAP ENTITY -> DTO
+        // MAP ENTITY -> DTO (utilizado por UpdateSaleAsync u otros casos)
         // ============================================================
         private SaleDto MapSaleToDto(Sale s)
         {
@@ -426,4 +481,3 @@ namespace ForrajeriaJovitaAPI.Services
         }
     }
 }
-

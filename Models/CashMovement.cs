@@ -20,8 +20,7 @@ namespace ForrajeriaJovitaAPI.Models
         public bool MovementCancelled { get; set; } = false;
 
         // Opcional: asignar cliente al movimiento para trazabilidad
-        public int? ClientId { get; set; }
-        public Client? Client { get; set; }
+        
 
         public virtual ICollection<Sale> Sales { get; set; } = new List<Sale>();
     }
