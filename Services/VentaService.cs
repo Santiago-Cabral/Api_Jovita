@@ -413,6 +413,32 @@ namespace ForrajeriaJovitaAPI.Services
             await _context.SaveChangesAsync();
             return MapSaleToDto(sale);
         }
+        // ============================================================
+        // UPDATE ONLY SALE STATUS (partial update safe)
+        // ============================================================
+        public async Task<SaleDto?> UpdateSaleStatusAsync(int id, int status)
+        {
+            // Attach a lightweight entity and mark only PaymentStatus as modified.
+            var sale = new Sale { Id = id };
+            _context.Sales.Attach(sale);
+
+            // set value and mark modified
+            sale.PaymentStatus = status;
+            _context.Entry(sale).Property(s => s.PaymentStatus).IsModified = true;
+
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateException ex)
+            {
+                // Rethrow preserving the original exception so controller can log/return it.
+                throw;
+            }
+
+            // Return fresh DTO using your projection method
+            return await GetSaleByIdAsync(id);
+        }
 
         // ============================================================
         // TODAY SUMMARY
