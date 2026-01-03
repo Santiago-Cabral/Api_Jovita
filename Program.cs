@@ -25,6 +25,11 @@ builder.Services.AddDbContext<ForrajeriaContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 // ============================================================
+// HTTP CLIENT (Para Payway)
+// ============================================================
+builder.Services.AddHttpClient();
+
+// ============================================================
 // JWT SETTINGS
 // ============================================================
 var jwtSettings = new JwtSettings

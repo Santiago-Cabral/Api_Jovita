@@ -29,9 +29,10 @@ namespace ForrajeriaJovitaAPI.Data
         public DbSet<Season> Seasons { get; set; }
         public DbSet<User> Users { get; set; }
         public DbSet<Category> Categories { get; set; }
-        
 
-
+        // ========== NUEVO: DbSet para PaymentTransaction ==========
+        public DbSet<PaymentTransaction> PaymentTransactions { get; set; }
+        // ==========================================================
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -109,12 +110,14 @@ namespace ForrajeriaJovitaAPI.Data
             {
                 entity.HasKey(e => e.Id);
             });
+
             // Category
             modelBuilder.Entity<Category>(entity =>
             {
                 entity.HasKey(c => c.Id);
                 entity.Property(c => c.Name).IsRequired();
             });
+
             //product
             modelBuilder.Entity<Product>(entity =>
             {
@@ -123,7 +126,6 @@ namespace ForrajeriaJovitaAPI.Data
                       .HasForeignKey(p => p.CategoryId)
                       .OnDelete(DeleteBehavior.SetNull);
             });
-
 
             // ProductSeason
             modelBuilder.Entity<ProductSeason>(entity =>
@@ -294,6 +296,29 @@ namespace ForrajeriaJovitaAPI.Data
                     .HasForeignKey(e => e.RoleId)
                     .OnDelete(DeleteBehavior.Restrict);
             });
+
+            // ========== NUEVO: Configuración para PaymentTransaction ==========
+            modelBuilder.Entity<PaymentTransaction>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+
+                // Índice único en TransactionId (no puede haber duplicados)
+                entity.HasIndex(e => e.TransactionId)
+                    .IsUnique();
+
+                // Índice en CheckoutId para búsquedas rápidas
+                entity.HasIndex(e => e.CheckoutId);
+
+                // Índice en SaleId para búsquedas rápidas
+                entity.HasIndex(e => e.SaleId);
+
+                // Relación con Sale (una venta puede tener múltiples intentos de pago)
+                entity.HasOne(e => e.Sale)
+                    .WithMany()
+                    .HasForeignKey(e => e.SaleId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+            // ==================================================================
         }
     }
 }
