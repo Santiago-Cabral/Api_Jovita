@@ -19,14 +19,16 @@ namespace ForrajeriaJovitaAPI.Services
         }
 
         // ============================================================
-        // GET ALL SALES - Proyección a DTO (evita materialización problemáticas)
+        // GET ALL SALES - Materializamos entidades con Include y mappeamos a DTO
         // ============================================================
         public async Task<IEnumerable<SaleDto>> GetAllSalesAsync(
             DateTime? startDate = null,
             DateTime? endDate = null,
             int? sellerId = null)
         {
-            var query = _context.Sales.AsQueryable();
+            var query = _context.Sales
+                .AsQueryable()
+                .AsNoTracking();
 
             if (startDate.HasValue)
                 query = query.Where(s => s.SoldAt >= startDate.Value);
@@ -37,85 +39,34 @@ namespace ForrajeriaJovitaAPI.Services
             if (sellerId.HasValue)
                 query = query.Where(s => s.SellerUserId == sellerId.Value);
 
-            // Proyección directa a DTOs
-            var projected = await query
+            // Incluimos relaciones para evitar queries adicionales (N+1)
+            var salesEntities = await query
+                .Include(s => s.SellerUser)
+                .Include(s => s.SalesItems).ThenInclude(i => i.Product)
+                .Include(s => s.SalesPayments)
                 .OrderByDescending(s => s.SoldAt)
-                .Select(s => new SaleDto
-                {
-                    Id = s.Id,
-                    SoldAt = s.SoldAt,
-                    SellerName = s.SellerUser != null ? s.SellerUser.Name + " " + s.SellerUser.LastName : "Web",
-                    Subtotal = s.Subtotal,
-                    DiscountTotal = s.DiscountTotal,
-                    Total = s.Total,
-                    DeliveryType = s.DeliveryType,
-                    DeliveryAddress = s.DeliveryAddress,
-                    DeliveryCost = s.DeliveryCost,
-                    DeliveryNote = s.DeliveryNote,
-                    // CONVERSIÓN EXPLÍCITA: la entidad usa decimal, el DTO int
-                    PaymentStatus = (int)s.PaymentStatus,
-                    Items = s.SalesItems.Select(i => new SaleItemDto
-                    {
-                        ProductId = i.ProductId,
-                        ProductName = i.Product != null ? i.Product.Name : "Producto",
-                        Quantity = i.Quantity,
-                        UnitPrice = i.UnitPrice,
-                        Discount = i.Discount,
-                        Total = (i.Quantity * i.UnitPrice) - i.Discount
-                    }).ToList(),
-                    Payments = s.SalesPayments.Select(p => new SalePaymentDto
-                    {
-                        Method = (int)p.Method,
-                        MethodName = p.Method.ToString(),
-                        Amount = p.Amount,
-                        Reference = p.Reference ?? string.Empty
-                    }).ToList()
-                })
                 .ToListAsync();
 
-            return projected;
+            // Mapear en memoria a DTOs (aquí podemos convertir decimal -> int)
+            var result = salesEntities.Select(s => MapSaleToDto(s)).ToList();
+            return result;
         }
 
         // ============================================================
-        // GET SALE BY ID (proyección)
+        // GET SALE BY ID - Materializar y mapear
         // ============================================================
         public async Task<SaleDto?> GetSaleByIdAsync(int id)
         {
-            var dto = await _context.Sales
+            var sale = await _context.Sales
+                .AsNoTracking()
                 .Where(s => s.Id == id)
-                .Select(s => new SaleDto
-                {
-                    Id = s.Id,
-                    SoldAt = s.SoldAt,
-                    SellerName = s.SellerUser != null ? s.SellerUser.Name + " " + s.SellerUser.LastName : "Web",
-                    Subtotal = s.Subtotal,
-                    DiscountTotal = s.DiscountTotal,
-                    Total = s.Total,
-                    DeliveryType = s.DeliveryType,
-                    DeliveryAddress = s.DeliveryAddress,
-                    DeliveryCost = s.DeliveryCost,
-                    DeliveryNote = s.DeliveryNote,
-                    PaymentStatus = (int)s.PaymentStatus,
-                    Items = s.SalesItems.Select(i => new SaleItemDto
-                    {
-                        ProductId = i.ProductId,
-                        ProductName = i.Product != null ? i.Product.Name : "Producto",
-                        Quantity = i.Quantity,
-                        UnitPrice = i.UnitPrice,
-                        Discount = i.Discount,
-                        Total = (i.Quantity * i.UnitPrice) - i.Discount
-                    }).ToList(),
-                    Payments = s.SalesPayments.Select(p => new SalePaymentDto
-                    {
-                        Method = (int)p.Method,
-                        MethodName = p.Method.ToString(),
-                        Amount = p.Amount,
-                        Reference = p.Reference ?? string.Empty
-                    }).ToList()
-                })
+                .Include(s => s.SellerUser)
+                .Include(s => s.SalesItems).ThenInclude(i => i.Product)
+                .Include(s => s.SalesPayments)
                 .FirstOrDefaultAsync();
 
-            return dto;
+            if (sale == null) return null;
+            return MapSaleToDto(sale);
         }
 
         // ============================================================
@@ -193,8 +144,8 @@ namespace ForrajeriaJovitaAPI.Services
                     DeliveryAddress = dto.Customer,
                     DeliveryCost = dto.ShippingCost,
                     DeliveryNote = dto.PaymentReference ?? "Pedido Web",
-                    // asignamos decimal (tipo de la entidad)
-                    PaymentStatus = 0m, // pendiente por defecto como decimal
+                    // la entidad usa decimal para PaymentStatus, asignamos decimal literal
+                    PaymentStatus = 0m, // pendiente por defecto
                     CreationDate = DateTime.Now
                 };
 
@@ -487,7 +438,7 @@ namespace ForrajeriaJovitaAPI.Services
                 DeliveryAddress = s.DeliveryAddress,
                 DeliveryCost = s.DeliveryCost,
                 DeliveryNote = s.DeliveryNote,
-                // convertir decimal -> int para DTO
+                // convertir decimal -> int para DTO (en memoria, seguro)
                 PaymentStatus = Convert.ToInt32(s.PaymentStatus),
 
                 Items = s.SalesItems.Select(i => new SaleItemDto
@@ -511,3 +462,4 @@ namespace ForrajeriaJovitaAPI.Services
         }
     }
 }
+
