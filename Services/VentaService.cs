@@ -19,7 +19,7 @@ namespace ForrajeriaJovitaAPI.Services
         }
 
         // ============================================================
-        // GET ALL SALES - Materializamos entidades con Include y mappeamos a DTO
+        // GET ALL SALES - materializamos entidades y luego mapeamos a DTOs (sin casts en LINQ)
         // ============================================================
         public async Task<IEnumerable<SaleDto>> GetAllSalesAsync(
             DateTime? startDate = null,
@@ -39,7 +39,6 @@ namespace ForrajeriaJovitaAPI.Services
             if (sellerId.HasValue)
                 query = query.Where(s => s.SellerUserId == sellerId.Value);
 
-            // Incluimos relaciones para evitar queries adicionales (N+1)
             var salesEntities = await query
                 .Include(s => s.SellerUser)
                 .Include(s => s.SalesItems).ThenInclude(i => i.Product)
@@ -47,13 +46,11 @@ namespace ForrajeriaJovitaAPI.Services
                 .OrderByDescending(s => s.SoldAt)
                 .ToListAsync();
 
-            // Mapear en memoria a DTOs (aquí podemos convertir decimal -> int)
-            var result = salesEntities.Select(s => MapSaleToDto(s)).ToList();
-            return result;
+            return salesEntities.Select(s => MapSaleToDto(s)).ToList();
         }
 
         // ============================================================
-        // GET SALE BY ID - Materializar y mapear
+        // GET SALE BY ID
         // ============================================================
         public async Task<SaleDto?> GetSaleByIdAsync(int id)
         {
@@ -70,15 +67,13 @@ namespace ForrajeriaJovitaAPI.Services
         }
 
         // ============================================================
-        // CREATE PUBLIC SALE (WEB / CARRITO)
+        // CREATE PUBLIC SALE (web)
         // ============================================================
         public async Task<SaleDto> CreatePublicSaleAsync(CreatePublicSaleDto dto)
         {
             using var transaction = await _context.Database.BeginTransactionAsync();
-
             try
             {
-                // 1) Validaciones básicas del DTO
                 if (dto.Items == null || !dto.Items.Any())
                     throw new InvalidOperationException("El pedido debe incluir productos.");
 
@@ -90,33 +85,27 @@ namespace ForrajeriaJovitaAPI.Services
                         throw new InvalidOperationException($"UnitPrice inválido para producto {it.ProductId}.");
                 }
 
-                // 2) Calcular subtotal/total a partir de los items
                 decimal subtotal = dto.Items.Sum(i => i.Quantity * i.UnitPrice);
-                decimal discountTotal = 0m; // DTO actual no trae descuentos por item
+                decimal discountTotal = 0m;
                 decimal total = subtotal + dto.ShippingCost - discountTotal;
                 if (total < 0) total = 0m;
 
-                // 3) Determinar usuario sistema (seller) — preferir admin@jovita.com, fallback role 1
                 var systemUser = await _context.Users
                     .FirstOrDefaultAsync(u => u.Email == "admin@jovita.com" || u.UserName == "admin@jovita.com");
 
                 if (systemUser == null)
-                {
                     systemUser = await _context.Users.FirstOrDefaultAsync(u => u.RoleId == 1);
-                }
 
                 if (systemUser == null)
-                    throw new InvalidOperationException("No se encontró usuario sistema (admin). Crear usuario 'admin@jovita.com' o definir un usuario con RoleId = 1.");
+                    throw new InvalidOperationException("No se encontró usuario sistema (admin).");
 
-                // 4) Buscar una CashSession para asociar el movimiento de caja (usar la última)
                 var activeSession = await _context.CashSessions
                     .OrderByDescending(s => s.Id)
                     .FirstOrDefaultAsync();
 
                 if (activeSession == null)
-                    throw new InvalidOperationException("No se encontró CashSession. Crear/activar una sesión de caja antes de procesar ventas web.");
+                    throw new InvalidOperationException("No se encontró CashSession. Crear/activar una sesión de caja.");
 
-                // 5) Crear CashMovement completo (no debe quedar con campos NULL)
                 var cashMovement = new CashMovement
                 {
                     CashSessionId = activeSession.Id,
@@ -129,9 +118,8 @@ namespace ForrajeriaJovitaAPI.Services
                 };
 
                 _context.CashMovements.Add(cashMovement);
-                await _context.SaveChangesAsync(); // obtener cashMovement.Id
+                await _context.SaveChangesAsync();
 
-                // 6) Crear la entidad Sale asociada al CashMovement y al usuario sistema
                 var sale = new Sale
                 {
                     CashMovementId = cashMovement.Id,
@@ -144,29 +132,26 @@ namespace ForrajeriaJovitaAPI.Services
                     DeliveryAddress = dto.Customer,
                     DeliveryCost = dto.ShippingCost,
                     DeliveryNote = dto.PaymentReference ?? "Pedido Web",
-                    // la entidad usa decimal para PaymentStatus, asignamos decimal literal
-                    PaymentStatus = 0m, // pendiente por defecto
+                    // la entidad usa decimal -> asignamos decimal explícitamente
+                    PaymentStatus = 0m,
                     CreationDate = DateTime.Now
                 };
 
                 _context.Sales.Add(sale);
-                await _context.SaveChangesAsync(); // obtener sale.Id
+                await _context.SaveChangesAsync();
 
-                // 7) Agregar items (verificar existencia de producto)
                 foreach (var item in dto.Items)
                 {
                     var product = await _context.Products.FindAsync(item.ProductId);
                     if (product == null)
                         throw new InvalidOperationException($"Producto {item.ProductId} no encontrado.");
 
-                    var unitPrice = item.UnitPrice;
-
                     _context.SalesItems.Add(new SaleItem
                     {
                         SaleId = sale.Id,
                         ProductId = item.ProductId,
                         Quantity = item.Quantity,
-                        UnitPrice = unitPrice,
+                        UnitPrice = item.UnitPrice,
                         Discount = 0,
                         ConversionToBase = 1,
                         DeductedBaseQuantity = item.Quantity,
@@ -174,12 +159,9 @@ namespace ForrajeriaJovitaAPI.Services
                     });
                 }
 
-                // 8) Registrar pago(s) — DTO público trae solo PaymentMethod/PaymentReference
                 decimal paymentsSum = 0m;
-                PaymentMethod paymentMethod;
-                if (string.IsNullOrWhiteSpace(dto.PaymentMethod))
-                    paymentMethod = PaymentMethod.Cash;
-                else
+                PaymentMethod paymentMethod = PaymentMethod.Cash;
+                if (!string.IsNullOrWhiteSpace(dto.PaymentMethod))
                 {
                     var pmLower = dto.PaymentMethod.ToString().ToLower();
                     paymentMethod = pmLower switch
@@ -206,21 +188,19 @@ namespace ForrajeriaJovitaAPI.Services
                     paymentsSum += total;
                 }
 
-                // 9) Guardar items y pagos
                 await _context.SaveChangesAsync();
 
-                // 10) Actualizar PaymentStatus en la venta según pagos (usar decimal)
+                // actualizar estado -> convertir int-like a decimal explícitamente
                 if (paymentsSum >= total && total > 0)
-                    sale.PaymentStatus = 1m; // pagado
+                    sale.PaymentStatus = 1m;
                 else if (paymentsSum > 0 && paymentsSum < total)
-                    sale.PaymentStatus = 2m; // parcial
+                    sale.PaymentStatus = 2m;
                 else
-                    sale.PaymentStatus = 0m; // pendiente
+                    sale.PaymentStatus = 0m;
 
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
 
-                // 11) Retornar DTO completo (usamos la proyección GetSaleByIdAsync)
                 return (await GetSaleByIdAsync(sale.Id))!;
             }
             catch
@@ -231,12 +211,11 @@ namespace ForrajeriaJovitaAPI.Services
         }
 
         // ============================================================
-        // CREATE SALE (CAJA / INTERNA) - mantiene lógica previa
+        // CREATE SALE (caja interna)
         // ============================================================
         public async Task<SaleDto> CreateSaleAsync(CreateSaleDto dto)
         {
             using var transaction = await _context.Database.BeginTransactionAsync();
-
             try
             {
                 var seller = await _context.Users.FindAsync(dto.SellerUserId);
@@ -274,7 +253,7 @@ namespace ForrajeriaJovitaAPI.Services
                     Subtotal = subtotal,
                     DiscountTotal = totalDiscount,
                     Total = total,
-                    PaymentStatus = 1m, // decimal literal
+                    PaymentStatus = 1m,
                     CreationDate = DateTime.Now
                 };
 
@@ -360,7 +339,7 @@ namespace ForrajeriaJovitaAPI.Services
 
             if (dto.PaymentStatus.HasValue)
             {
-                // CONVERSIÓN EXPLÍCITA: el entity usa decimal
+                // convertimos explícitamente int -> decimal (entidad usa decimal)
                 sale.PaymentStatus = Convert.ToDecimal(dto.PaymentStatus.Value);
             }
 
@@ -373,11 +352,10 @@ namespace ForrajeriaJovitaAPI.Services
         // ============================================================
         public async Task<SaleDto?> UpdateSaleStatusAsync(int id, int status)
         {
-            // Attach a lightweight entity and mark only PaymentStatus as modified.
             var sale = new Sale { Id = id };
             _context.Sales.Attach(sale);
 
-            // set value and mark modified (convert int -> decimal explícito)
+            // convert int -> decimal explícito
             sale.PaymentStatus = Convert.ToDecimal(status);
             _context.Entry(sale).Property(s => s.PaymentStatus).IsModified = true;
 
@@ -387,11 +365,9 @@ namespace ForrajeriaJovitaAPI.Services
             }
             catch (DbUpdateException)
             {
-                // Rethrow preserving the original exception so controller can log/return it.
                 throw;
             }
 
-            // Return fresh DTO using your projection method
             return await GetSaleByIdAsync(id);
         }
 
@@ -418,7 +394,7 @@ namespace ForrajeriaJovitaAPI.Services
         }
 
         // ============================================================
-        // MAP ENTITY -> DTO (utilizado por UpdateSaleAsync u otros casos)
+        // MAP ENTITY -> DTO (hacemos la conversión decimal -> int en memoria)
         // ============================================================
         private SaleDto MapSaleToDto(Sale s)
         {
@@ -426,21 +402,16 @@ namespace ForrajeriaJovitaAPI.Services
             {
                 Id = s.Id,
                 SoldAt = s.SoldAt,
-                SellerName = s.SellerUser != null
-                    ? $"{s.SellerUser.Name} {s.SellerUser.LastName}"
-                    : "Web",
-
+                SellerName = s.SellerUser != null ? $"{s.SellerUser.Name} {s.SellerUser.LastName}" : "Web",
                 Subtotal = s.Subtotal,
                 DiscountTotal = s.DiscountTotal,
                 Total = s.Total,
-
                 DeliveryType = s.DeliveryType,
                 DeliveryAddress = s.DeliveryAddress,
                 DeliveryCost = s.DeliveryCost,
                 DeliveryNote = s.DeliveryNote,
-                // convertir decimal -> int para DTO (en memoria, seguro)
+                // aquí convertimos seguro decimal -> int
                 PaymentStatus = Convert.ToInt32(s.PaymentStatus),
-
                 Items = s.SalesItems.Select(i => new SaleItemDto
                 {
                     ProductId = i.ProductId,
@@ -450,7 +421,6 @@ namespace ForrajeriaJovitaAPI.Services
                     Discount = i.Discount,
                     Total = (i.Quantity * i.UnitPrice) - i.Discount
                 }).ToList(),
-
                 Payments = s.SalesPayments.Select(p => new SalePaymentDto
                 {
                     Method = (int)p.Method,
@@ -462,4 +432,5 @@ namespace ForrajeriaJovitaAPI.Services
         }
     }
 }
+
 
