@@ -37,7 +37,7 @@ namespace ForrajeriaJovitaAPI.Services
             if (sellerId.HasValue)
                 query = query.Where(s => s.SellerUserId == sellerId.Value);
 
-            // Proyección directa a DTOs para evitar problemas de materialización
+            // Proyección directa a DTOs
             var projected = await query
                 .OrderByDescending(s => s.SoldAt)
                 .Select(s => new SaleDto
@@ -52,7 +52,8 @@ namespace ForrajeriaJovitaAPI.Services
                     DeliveryAddress = s.DeliveryAddress,
                     DeliveryCost = s.DeliveryCost,
                     DeliveryNote = s.DeliveryNote,
-                    PaymentStatus = s.PaymentStatus,
+                    // <-- PROTECCIÓN: convertir explícitamente a int (evita cast runtime)
+                    PaymentStatus = (int)s.PaymentStatus,
                     Items = s.SalesItems.Select(i => new SaleItemDto
                     {
                         ProductId = i.ProductId,
@@ -94,7 +95,8 @@ namespace ForrajeriaJovitaAPI.Services
                     DeliveryAddress = s.DeliveryAddress,
                     DeliveryCost = s.DeliveryCost,
                     DeliveryNote = s.DeliveryNote,
-                    PaymentStatus = s.PaymentStatus,
+                    // <-- PROTECCIÓN: convertir explícitamente a int
+                    PaymentStatus = (int)s.PaymentStatus,
                     Items = s.SalesItems.Select(i => new SaleItemDto
                     {
                         ProductId = i.ProductId,
@@ -174,7 +176,6 @@ namespace ForrajeriaJovitaAPI.Services
                     CreationDate = DateTime.Now,
                     TypeOfSale = "Web",
                     MovementCancelled = false
-                    // <--- REMOVED: no asignamos ClientId porque el modelo CashMovement no la tiene
                 };
 
                 _context.CashMovements.Add(cashMovement);
@@ -193,7 +194,8 @@ namespace ForrajeriaJovitaAPI.Services
                     DeliveryAddress = dto.Customer,
                     DeliveryCost = dto.ShippingCost,
                     DeliveryNote = dto.PaymentReference ?? "Pedido Web",
-                    PaymentStatus = 0, // pendiente por defecto
+                    // <-- asignar decimal explícito (evita ambigüedad)
+                    PaymentStatus = 0m, // pendiente por defecto como decimal
                     CreationDate = DateTime.Now
                 };
 
@@ -207,7 +209,6 @@ namespace ForrajeriaJovitaAPI.Services
                     if (product == null)
                         throw new InvalidOperationException($"Producto {item.ProductId} no encontrado.");
 
-                    // Si preferís usar precio desde BD: var unitPrice = product.RetailPrice;
                     var unitPrice = item.UnitPrice;
 
                     _context.SalesItems.Add(new SaleItem
@@ -258,13 +259,13 @@ namespace ForrajeriaJovitaAPI.Services
                 // 9) Guardar items y pagos
                 await _context.SaveChangesAsync();
 
-                // 10) Actualizar PaymentStatus en la venta según pagos
+                // 10) Actualizar PaymentStatus en la venta según pagos (usar decimal literal)
                 if (paymentsSum >= total && total > 0)
-                    sale.PaymentStatus = 1; // pagado
+                    sale.PaymentStatus = 1m; // pagado
                 else if (paymentsSum > 0 && paymentsSum < total)
-                    sale.PaymentStatus = 2; // parcial
+                    sale.PaymentStatus = 2m; // parcial
                 else
-                    sale.PaymentStatus = 0; // pendiente
+                    sale.PaymentStatus = 0m; // pendiente
 
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
@@ -323,7 +324,8 @@ namespace ForrajeriaJovitaAPI.Services
                     Subtotal = subtotal,
                     DiscountTotal = totalDiscount,
                     Total = total,
-                    PaymentStatus = 1,
+                    // <-- asignar decimal literal
+                    PaymentStatus = 1m,
                     CreationDate = DateTime.Now
                 };
 
@@ -408,11 +410,15 @@ namespace ForrajeriaJovitaAPI.Services
                 sale.DeliveryNote = dto.DeliveryNote;
 
             if (dto.PaymentStatus.HasValue)
-                sale.PaymentStatus = dto.PaymentStatus.Value;
+            {
+                // <-- CONVERSIÓN EXPLÍCITA: soporta que la entidad use decimal
+                sale.PaymentStatus = Convert.ToDecimal(dto.PaymentStatus.Value);
+            }
 
             await _context.SaveChangesAsync();
             return MapSaleToDto(sale);
         }
+
         // ============================================================
         // UPDATE ONLY SALE STATUS (partial update safe)
         // ============================================================
@@ -422,8 +428,8 @@ namespace ForrajeriaJovitaAPI.Services
             var sale = new Sale { Id = id };
             _context.Sales.Attach(sale);
 
-            // set value and mark modified
-            sale.PaymentStatus = status;
+            // set value and mark modified (convert to decimal explicitly)
+            sale.PaymentStatus = Convert.ToDecimal(status);
             _context.Entry(sale).Property(s => s.PaymentStatus).IsModified = true;
 
             try
@@ -483,7 +489,8 @@ namespace ForrajeriaJovitaAPI.Services
                 DeliveryAddress = s.DeliveryAddress,
                 DeliveryCost = s.DeliveryCost,
                 DeliveryNote = s.DeliveryNote,
-                PaymentStatus = s.PaymentStatus,
+                // <-- convertir explícitamente a int para el DTO
+                PaymentStatus = Convert.ToInt32(s.PaymentStatus),
 
                 Items = s.SalesItems.Select(i => new SaleItemDto
                 {
