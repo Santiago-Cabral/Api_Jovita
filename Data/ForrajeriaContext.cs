@@ -1,5 +1,7 @@
-using ForrajeriaJovitaAPI.Models;
+// Data/ForrajeriaContext.cs
+using System.Linq;
 using Microsoft.EntityFrameworkCore;
+using ForrajeriaJovitaAPI.Models;
 
 namespace ForrajeriaJovitaAPI.Data
 {
@@ -8,31 +10,30 @@ namespace ForrajeriaJovitaAPI.Data
         public ForrajeriaContext(DbContextOptions<ForrajeriaContext> options) : base(options) { }
 
         // DbSets
-        public DbSet<Access> Accesses { get; set; }
-        public DbSet<Branch> Branches { get; set; }
-        public DbSet<CashMovement> CashMovements { get; set; }
-        public DbSet<CashSession> CashSessions { get; set; }
-        public DbSet<Client> Clients { get; set; }
-        public DbSet<Configuration> Configurations { get; set; }
-        public DbSet<Product> Products { get; set; }
-        public DbSet<ProductSeason> ProductsSeasons { get; set; }
-        public DbSet<ProductStock> ProductsStocks { get; set; }
-        public DbSet<ProductUnit> ProductUnits { get; set; }
-        public DbSet<ProductUnitPrice> ProductUnitPrices { get; set; }
-        public DbSet<Promotion> Promotions { get; set; }
-        public DbSet<Role> Roles { get; set; }
-        public DbSet<RoleAccess> RolesAccesses { get; set; }
-        public DbSet<Sale> Sales { get; set; }
-        public DbSet<SaleItem> SalesItems { get; set; }
-        public DbSet<SaleItemToReturn> SaleItemToReturn { get; set; }
-        public DbSet<SalePayment> SalesPayments { get; set; }
-        public DbSet<Season> Seasons { get; set; }
-        public DbSet<User> Users { get; set; }
-        public DbSet<Category> Categories { get; set; }
+        public DbSet<Access> Accesses { get; set; } = null!;
+        public DbSet<Branch> Branches { get; set; } = null!;
+        public DbSet<CashMovement> CashMovements { get; set; } = null!;
+        public DbSet<CashSession> CashSessions { get; set; } = null!;
+        public DbSet<Client> Clients { get; set; } = null!;
+        public DbSet<Configuration> Configurations { get; set; } = null!;
+        public DbSet<Product> Products { get; set; } = null!;
+        public DbSet<ProductSeason> ProductsSeasons { get; set; } = null!;
+        public DbSet<ProductStock> ProductsStocks { get; set; } = null!;
+        public DbSet<ProductUnit> ProductUnits { get; set; } = null!;
+        public DbSet<ProductUnitPrice> ProductUnitPrices { get; set; } = null!;
+        public DbSet<Promotion> Promotions { get; set; } = null!;
+        public DbSet<Role> Roles { get; set; } = null!;
+        public DbSet<RoleAccess> RolesAccesses { get; set; } = null!;
+        public DbSet<Sale> Sales { get; set; } = null!;
+        public DbSet<SaleItem> SalesItems { get; set; } = null!;
+        public DbSet<SaleItemToReturn> SaleItemToReturn { get; set; } = null!;
+        public DbSet<SalePayment> SalesPayments { get; set; } = null!;
+        public DbSet<Season> Seasons { get; set; } = null!;
+        public DbSet<User> Users { get; set; } = null!;
+        public DbSet<Category> Categories { get; set; } = null!;
 
-        // ========== NUEVO: DbSet para PaymentTransaction ==========
-        public DbSet<PaymentTransaction> PaymentTransactions { get; set; }
-        // ==========================================================
+        // PaymentTransaction
+        public DbSet<PaymentTransaction> PaymentTransactions { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -70,9 +71,9 @@ namespace ForrajeriaJovitaAPI.Data
                 entity.Property(e => e.Type).HasConversion<int>();
 
                 entity.HasOne(e => e.CashSession)
-                    .WithMany(c => c.CashMovements)
-                    .HasForeignKey(e => e.CashSessionId)
-                    .OnDelete(DeleteBehavior.Restrict);
+                      .WithMany(c => c.CashMovements)
+                      .HasForeignKey(e => e.CashSessionId)
+                      .OnDelete(DeleteBehavior.Restrict);
             });
 
             // CashSession
@@ -81,19 +82,19 @@ namespace ForrajeriaJovitaAPI.Data
                 entity.HasKey(e => e.Id);
 
                 entity.HasOne(e => e.Branch)
-                    .WithMany(b => b.CashSessions)
-                    .HasForeignKey(e => e.BranchId)
-                    .OnDelete(DeleteBehavior.Restrict);
+                      .WithMany(b => b.CashSessions)
+                      .HasForeignKey(e => e.BranchId)
+                      .OnDelete(DeleteBehavior.Restrict);
 
                 entity.HasOne(e => e.OpenedByUser)
-                    .WithMany(u => u.OpenedCashSessions)
-                    .HasForeignKey(e => e.OpenedByUserId)
-                    .OnDelete(DeleteBehavior.Restrict);
+                      .WithMany(u => u.OpenedCashSessions)
+                      .HasForeignKey(e => e.OpenedByUserId)
+                      .OnDelete(DeleteBehavior.Restrict);
 
                 entity.HasOne(e => e.ClosedByUser)
-                    .WithMany(u => u.ClosedCashSessions)
-                    .HasForeignKey(e => e.ClosedByUserId)
-                    .OnDelete(DeleteBehavior.Restrict);
+                      .WithMany(u => u.ClosedCashSessions)
+                      .HasForeignKey(e => e.ClosedByUserId)
+                      .OnDelete(DeleteBehavior.Restrict);
             });
 
             // Client
@@ -118,7 +119,7 @@ namespace ForrajeriaJovitaAPI.Data
                 entity.Property(c => c.Name).IsRequired();
             });
 
-            //product
+            // Product
             modelBuilder.Entity<Product>(entity =>
             {
                 entity.HasOne(p => p.Category)
@@ -133,14 +134,14 @@ namespace ForrajeriaJovitaAPI.Data
                 entity.HasKey(e => e.Id);
 
                 entity.HasOne(e => e.Product)
-                    .WithMany(p => p.ProductsSeasons)
-                    .HasForeignKey(e => e.ProductId)
-                    .OnDelete(DeleteBehavior.Restrict);
+                      .WithMany(p => p.ProductsSeasons)
+                      .HasForeignKey(e => e.ProductId)
+                      .OnDelete(DeleteBehavior.Restrict);
 
                 entity.HasOne(e => e.Season)
-                    .WithMany(s => s.ProductsSeasons)
-                    .HasForeignKey(e => e.SeasonId)
-                    .OnDelete(DeleteBehavior.Restrict);
+                      .WithMany(s => s.ProductsSeasons)
+                      .HasForeignKey(e => e.SeasonId)
+                      .OnDelete(DeleteBehavior.Restrict);
             });
 
             // ProductStock
@@ -149,14 +150,14 @@ namespace ForrajeriaJovitaAPI.Data
                 entity.HasKey(e => e.Id);
 
                 entity.HasOne(e => e.Product)
-                    .WithMany(p => p.ProductsStocks)
-                    .HasForeignKey(e => e.ProductId)
-                    .OnDelete(DeleteBehavior.Restrict);
+                      .WithMany(p => p.ProductsStocks)
+                      .HasForeignKey(e => e.ProductId)
+                      .OnDelete(DeleteBehavior.Restrict);
 
                 entity.HasOne(e => e.Branch)
-                    .WithMany(b => b.ProductsStocks)
-                    .HasForeignKey(e => e.BranchId)
-                    .OnDelete(DeleteBehavior.Restrict);
+                      .WithMany(b => b.ProductsStocks)
+                      .HasForeignKey(e => e.BranchId)
+                      .OnDelete(DeleteBehavior.Restrict);
             });
 
             // ProductUnit
@@ -168,9 +169,9 @@ namespace ForrajeriaJovitaAPI.Data
                 entity.Property(e => e.StockRounding).HasConversion<int>();
 
                 entity.HasOne(e => e.Product)
-                    .WithMany(p => p.ProductUnits)
-                    .HasForeignKey(e => e.ProductId)
-                    .OnDelete(DeleteBehavior.Restrict);
+                      .WithMany(p => p.ProductUnits)
+                      .HasForeignKey(e => e.ProductId)
+                      .OnDelete(DeleteBehavior.Restrict);
             });
 
             // ProductUnitPrice
@@ -180,9 +181,9 @@ namespace ForrajeriaJovitaAPI.Data
                 entity.Property(e => e.Tier).HasConversion<int>();
 
                 entity.HasOne(e => e.ProductUnit)
-                    .WithMany(pu => pu.ProductUnitPrices)
-                    .HasForeignKey(e => e.ProductUnitId)
-                    .OnDelete(DeleteBehavior.Restrict);
+                      .WithMany(pu => pu.ProductUnitPrices)
+                      .HasForeignKey(e => e.ProductUnitId)
+                      .OnDelete(DeleteBehavior.Restrict);
             });
 
             // Promotion
@@ -192,9 +193,9 @@ namespace ForrajeriaJovitaAPI.Data
                 entity.Property(e => e.Name).IsRequired();
 
                 entity.HasOne(e => e.Product)
-                    .WithMany(p => p.Promotions)
-                    .HasForeignKey(e => e.ProductId)
-                    .OnDelete(DeleteBehavior.Restrict);
+                      .WithMany(p => p.Promotions)
+                      .HasForeignKey(e => e.ProductId)
+                      .OnDelete(DeleteBehavior.Restrict);
             });
 
             // Role
@@ -210,14 +211,14 @@ namespace ForrajeriaJovitaAPI.Data
                 entity.HasKey(e => e.Id);
 
                 entity.HasOne(e => e.Access)
-                    .WithMany(a => a.RolesAccesses)
-                    .HasForeignKey(e => e.AccessId)
-                    .OnDelete(DeleteBehavior.Restrict);
+                      .WithMany(a => a.RolesAccesses)
+                      .HasForeignKey(e => e.AccessId)
+                      .OnDelete(DeleteBehavior.Restrict);
 
                 entity.HasOne(e => e.Role)
-                    .WithMany(r => r.RolesAccesses)
-                    .HasForeignKey(e => e.RoleId)
-                    .OnDelete(DeleteBehavior.Restrict);
+                      .WithMany(r => r.RolesAccesses)
+                      .HasForeignKey(e => e.RoleId)
+                      .OnDelete(DeleteBehavior.Restrict);
             });
 
             // Sale
@@ -226,14 +227,14 @@ namespace ForrajeriaJovitaAPI.Data
                 entity.HasKey(e => e.Id);
 
                 entity.HasOne(e => e.CashMovement)
-                    .WithMany(cm => cm.Sales)
-                    .HasForeignKey(e => e.CashMovementId)
-                    .OnDelete(DeleteBehavior.Restrict);
+                      .WithMany(cm => cm.Sales)
+                      .HasForeignKey(e => e.CashMovementId)
+                      .OnDelete(DeleteBehavior.Restrict);
 
                 entity.HasOne(e => e.SellerUser)
-                    .WithMany(u => u.Sales)
-                    .HasForeignKey(e => e.SellerUserId)
-                    .OnDelete(DeleteBehavior.Restrict);
+                      .WithMany(u => u.Sales)
+                      .HasForeignKey(e => e.SellerUserId)
+                      .OnDelete(DeleteBehavior.Restrict);
             });
 
             // SaleItem
@@ -242,19 +243,19 @@ namespace ForrajeriaJovitaAPI.Data
                 entity.HasKey(e => e.Id);
 
                 entity.HasOne(e => e.Sale)
-                    .WithMany(s => s.SalesItems)
-                    .HasForeignKey(e => e.SaleId)
-                    .OnDelete(DeleteBehavior.Restrict);
+                      .WithMany(s => s.SalesItems)
+                      .HasForeignKey(e => e.SaleId)
+                      .OnDelete(DeleteBehavior.Restrict);
 
                 entity.HasOne(e => e.Product)
-                    .WithMany(p => p.SalesItems)
-                    .HasForeignKey(e => e.ProductId)
-                    .OnDelete(DeleteBehavior.Restrict);
+                      .WithMany(p => p.SalesItems)
+                      .HasForeignKey(e => e.ProductId)
+                      .OnDelete(DeleteBehavior.Restrict);
 
                 entity.HasOne(e => e.ProductUnit)
-                    .WithMany()
-                    .HasForeignKey(e => e.ProductUnitId)
-                    .OnDelete(DeleteBehavior.Restrict);
+                      .WithMany()
+                      .HasForeignKey(e => e.ProductUnitId)
+                      .OnDelete(DeleteBehavior.Restrict);
             });
 
             // SaleItemToReturn
@@ -270,9 +271,9 @@ namespace ForrajeriaJovitaAPI.Data
                 entity.Property(e => e.Method).HasConversion<int>();
 
                 entity.HasOne(e => e.Sale)
-                    .WithMany(s => s.SalesPayments)
-                    .HasForeignKey(e => e.SaleId)
-                    .OnDelete(DeleteBehavior.Restrict);
+                      .WithMany(s => s.SalesPayments)
+                      .HasForeignKey(e => e.SaleId)
+                      .OnDelete(DeleteBehavior.Restrict);
             });
 
             // Season
@@ -292,19 +293,18 @@ namespace ForrajeriaJovitaAPI.Data
                 entity.Property(e => e.Password).IsRequired();
 
                 entity.HasOne(e => e.Role)
-                    .WithMany(r => r.Users)
-                    .HasForeignKey(e => e.RoleId)
-                    .OnDelete(DeleteBehavior.Restrict);
+                      .WithMany(r => r.Users)
+                      .HasForeignKey(e => e.RoleId)
+                      .OnDelete(DeleteBehavior.Restrict);
             });
 
-            // ========== NUEVO: Configuración para PaymentTransaction ==========
+            // PaymentTransaction
             modelBuilder.Entity<PaymentTransaction>(entity =>
             {
                 entity.HasKey(e => e.Id);
 
                 // Índice único en TransactionId (no puede haber duplicados)
-                entity.HasIndex(e => e.TransactionId)
-                    .IsUnique();
+                entity.HasIndex(e => e.TransactionId).IsUnique();
 
                 // Índice en CheckoutId para búsquedas rápidas
                 entity.HasIndex(e => e.CheckoutId);
@@ -314,11 +314,10 @@ namespace ForrajeriaJovitaAPI.Data
 
                 // Relación con Sale (una venta puede tener múltiples intentos de pago)
                 entity.HasOne(e => e.Sale)
-                    .WithMany()
-                    .HasForeignKey(e => e.SaleId)
-                    .OnDelete(DeleteBehavior.Restrict);
+                      .WithMany()
+                      .HasForeignKey(e => e.SaleId)
+                      .OnDelete(DeleteBehavior.Restrict);
             });
-            // ==================================================================
         }
     }
-}-
+}
