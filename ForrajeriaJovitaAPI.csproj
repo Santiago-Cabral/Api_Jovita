@@ -1,11 +1,12 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
 	<PropertyGroup>
 		<TargetFramework>net9.0</TargetFramework>
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<RootNamespace>ForrajeriaJovitaAPI</RootNamespace>
-	</PropertyGroup>
+	  <UserSecretsId>f6906b61-0148-4c68-b986-42314ab31c39</UserSecretsId>
+  </PropertyGroup>
 
 	<ItemGroup>
 		<!-- JWT Authentication -->
