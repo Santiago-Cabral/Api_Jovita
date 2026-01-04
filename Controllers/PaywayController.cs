@@ -57,6 +57,13 @@ namespace ForrajeriaJovitaAPI.Controllers
 
                 var transactionId = $"TXN-{request.SaleId}-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
 
+                // 🔧 URLS DE RETORNO CORREGIDAS
+                var frontendUrl = _configuration["Frontend:Url"] ?? "http://localhost:5173";
+                var returnUrl = request.ReturnUrl ?? $"{frontendUrl}/payment-success";
+                var cancelUrl = request.CancelUrl ?? $"{frontendUrl}/payment-cancel";
+
+                _logger.LogInformation("🔗 URLs configuradas - Success: {ReturnUrl}, Cancel: {CancelUrl}", returnUrl, cancelUrl);
+
                 // signature method configurable: MD5 (legacy) o HMACSHA256 (preferible si la doc lo pide)
                 var signatureMethod = (_configuration["Payway:SignatureMethod"] ?? "MD5").ToUpperInvariant();
                 var dataToSign = $"{transactionId}{request.Amount}{privateKey}";
@@ -86,8 +93,8 @@ namespace ForrajeriaJovitaAPI.Controllers
                         name = request.Customer?.Name ?? "Cliente Web",
                         identification = new { type = "dni", number = "00000000" }
                     },
-                    return_url = request.ReturnUrl ?? $"{_configuration["AppUrl"]}/payment/success",
-                    cancel_url = request.CancelUrl ?? $"{_configuration["AppUrl"]}/payment/cancel",
+                    return_url = returnUrl,
+                    cancel_url = cancelUrl,
                     fraud_detection = new { send_to_cs = false, channel = "Web" },
                     signature = signature
                 };
@@ -346,7 +353,7 @@ namespace ForrajeriaJovitaAPI.Controllers
         #endregion
     }
 
-    #region DTOs (mantengo los tuyos)
+    #region DTOs
 
     public class PaywayCheckoutRequest
     {
