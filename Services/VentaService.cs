@@ -132,8 +132,7 @@ namespace ForrajeriaJovitaAPI.Services
                     DeliveryAddress = dto.Customer,
                     DeliveryCost = dto.ShippingCost,
                     DeliveryNote = dto.PaymentReference ?? "Pedido Web",
-                    // 🔧 FIX: Asignar decimal directamente
-                    PaymentStatus = 0m,
+                    PaymentStatus = 0, // 🔧 FIX: int en lugar de 0m
                     CreationDate = DateTime.Now
                 };
 
@@ -190,13 +189,13 @@ namespace ForrajeriaJovitaAPI.Services
 
                 await _context.SaveChangesAsync();
 
-                // 🔧 FIX: Actualizar estado con decimal
+                // 🔧 FIX: Usar int en lugar de decimal
                 if (paymentsSum >= total && total > 0)
-                    sale.PaymentStatus = 1m;  // Pagado
+                    sale.PaymentStatus = 1; // Pagado
                 else if (paymentsSum > 0 && paymentsSum < total)
-                    sale.PaymentStatus = 2m;  // Parcial
+                    sale.PaymentStatus = 2; // Parcial
                 else
-                    sale.PaymentStatus = 0m;  // Pendiente
+                    sale.PaymentStatus = 0; // Pendiente
 
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
@@ -253,8 +252,7 @@ namespace ForrajeriaJovitaAPI.Services
                     Subtotal = subtotal,
                     DiscountTotal = totalDiscount,
                     Total = total,
-                    // 🔧 FIX: decimal directo
-                    PaymentStatus = 1m,
+                    PaymentStatus = 1, // 🔧 FIX: int en lugar de 1m
                     CreationDate = DateTime.Now
                 };
 
@@ -340,8 +338,8 @@ namespace ForrajeriaJovitaAPI.Services
 
             if (dto.PaymentStatus.HasValue)
             {
-                // 🔧 FIX: Conversión explícita int -> decimal
-                sale.PaymentStatus = (decimal)dto.PaymentStatus.Value;
+                // 🔧 FIX: Ya es int, no necesita conversión
+                sale.PaymentStatus = dto.PaymentStatus.Value;
             }
 
             await _context.SaveChangesAsync();
@@ -356,8 +354,8 @@ namespace ForrajeriaJovitaAPI.Services
             var sale = new Sale { Id = id };
             _context.Sales.Attach(sale);
 
-            // 🔧 FIX: Conversión explícita int -> decimal
-            sale.PaymentStatus = (decimal)status;
+            // 🔧 FIX: Ya es int, asignación directa
+            sale.PaymentStatus = status;
             _context.Entry(sale).Property(s => s.PaymentStatus).IsModified = true;
 
             try
@@ -411,8 +409,7 @@ namespace ForrajeriaJovitaAPI.Services
                 DeliveryAddress = s.DeliveryAddress,
                 DeliveryCost = s.DeliveryCost,
                 DeliveryNote = s.DeliveryNote,
-                // 🔧 FIX: Conversión segura decimal -> int
-                PaymentStatus = (int)s.PaymentStatus,
+                PaymentStatus = s.PaymentStatus, // 🔧 FIX: Ya es int, asignación directa
                 Items = s.SalesItems.Select(i => new SaleItemDto
                 {
                     ProductId = i.ProductId,
