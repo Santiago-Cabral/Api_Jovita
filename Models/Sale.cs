@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 namespace ForrajeriaJovitaAPI.Models
@@ -11,7 +11,7 @@ namespace ForrajeriaJovitaAPI.Models
         public int CashMovementId { get; set; }
         public CashMovement? CashMovement { get; set; }
 
-        public int? ClientId { get; set; }     // NUEVO: referencia al cliente
+        public int? ClientId { get; set; }
         public Client? Client { get; set; }
 
         public int SellerUserId { get; set; }
@@ -27,7 +27,9 @@ namespace ForrajeriaJovitaAPI.Models
         public decimal? DeliveryCost { get; set; }
         public string? DeliveryNote { get; set; }
 
-        public int PaymentStatus { get; set; }
+        // 🔧 FIX: Cambiar de int a decimal para coincidir con la base de datos
+        public decimal PaymentStatus { get; set; }
+
         public DateTime CreationDate { get; set; } = DateTime.Now;
 
         public virtual ICollection<SaleItem> SalesItems { get; set; } = new List<SaleItem>();

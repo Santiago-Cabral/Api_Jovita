@@ -132,7 +132,7 @@ namespace ForrajeriaJovitaAPI.Services
                     DeliveryAddress = dto.Customer,
                     DeliveryCost = dto.ShippingCost,
                     DeliveryNote = dto.PaymentReference ?? "Pedido Web",
-                    PaymentStatus = 0, // Pendiente por defecto
+                    PaymentStatus = 0m, // decimal ahora
                     CreationDate = DateTime.Now
                 };
 
@@ -191,34 +191,23 @@ namespace ForrajeriaJovitaAPI.Services
 
                 await _context.SaveChangesAsync();
 
-                // 🔧 FIX: Actualizar PaymentStatus directamente en el objeto ya trackeado
+                // Actualizar PaymentStatus usando decimal
                 if (paymentsSum >= total && total > 0)
-                    sale.PaymentStatus = 1; // Pagado
+                    sale.PaymentStatus = 1m;
                 else if (paymentsSum > 0 && paymentsSum < total)
-                    sale.PaymentStatus = 2; // Parcial
+                    sale.PaymentStatus = 2m;
                 else
-                    sale.PaymentStatus = 0; // Pendiente
+                    sale.PaymentStatus = 0m;
 
                 await _context.SaveChangesAsync();
-
-                // 🔧 FIX: Commit ANTES de cualquier otra operación
                 await transaction.CommitAsync();
 
-                // Obtener la venta con todas las relaciones cargadas
-                var completeSale = await _context.Sales
-                    .AsNoTracking()
-                    .Where(s => s.Id == sale.Id)
-                    .Include(s => s.SellerUser)
-                    .Include(s => s.SalesItems).ThenInclude(i => i.Product)
-                    .Include(s => s.SalesPayments)
-                    .FirstOrDefaultAsync();
-
-                return completeSale != null ? MapSaleToDto(completeSale) : throw new InvalidOperationException("No se pudo recuperar la venta creada");
+                return (await GetSaleByIdAsync(sale.Id))!;
             }
-            catch (Exception ex)
+            catch
             {
                 await transaction.RollbackAsync();
-                throw new InvalidOperationException($"Error al crear venta pública: {ex.Message}", ex);
+                throw;
             }
         }
 
@@ -265,7 +254,7 @@ namespace ForrajeriaJovitaAPI.Services
                     Subtotal = subtotal,
                     DiscountTotal = totalDiscount,
                     Total = total,
-                    PaymentStatus = 1,
+                    PaymentStatus = 1m, // decimal
                     CreationDate = DateTime.Now
                 };
 
@@ -350,7 +339,7 @@ namespace ForrajeriaJovitaAPI.Services
                 sale.DeliveryNote = dto.DeliveryNote;
 
             if (dto.PaymentStatus.HasValue)
-                sale.PaymentStatus = dto.PaymentStatus.Value;
+                sale.PaymentStatus = (decimal)dto.PaymentStatus.Value; // int -> decimal
 
             await _context.SaveChangesAsync();
             return MapSaleToDto(sale);
@@ -364,7 +353,7 @@ namespace ForrajeriaJovitaAPI.Services
             var sale = await _context.Sales.FindAsync(id);
             if (sale == null) return null;
 
-            sale.PaymentStatus = status;
+            sale.PaymentStatus = (decimal)status; // int -> decimal
             await _context.SaveChangesAsync();
 
             return await GetSaleByIdAsync(id);
@@ -409,7 +398,7 @@ namespace ForrajeriaJovitaAPI.Services
                 DeliveryAddress = s.DeliveryAddress,
                 DeliveryCost = s.DeliveryCost,
                 DeliveryNote = s.DeliveryNote,
-                PaymentStatus = s.PaymentStatus,
+                PaymentStatus = (int)s.PaymentStatus, // decimal -> int para DTO
                 Items = s.SalesItems.Select(i => new SaleItemDto
                 {
                     ProductId = i.ProductId,
