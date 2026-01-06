@@ -1,5 +1,6 @@
 // Services/PaywayService.cs
 using System;
+using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -8,7 +9,6 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using ForrajeriaJovitaAPI.DTOs.Payway;   // para PaywayPaymentStatus, etc.
-
 
 namespace ForrajeriaJovitaAPI.Services
 {
@@ -45,9 +45,6 @@ namespace ForrajeriaJovitaAPI.Services
             var checkoutPath = _config["Payway:CheckoutPath"] ?? "/v1/checkouts";
             var authType = (_config["Payway:AuthType"] ?? "ApiKey").ToLowerInvariant();
 
-            if (string.IsNullOrWhiteSpace(apiUrl))
-                throw new InvalidOperationException("Payway:ApiUrl no configurado");
-
             // Credenciales
             var publicKey = _config["Payway:PublicKey"];
             var privateKey = _config["Payway:PrivateKey"];
@@ -64,7 +61,6 @@ namespace ForrajeriaJovitaAPI.Services
 
             // Use named client "payway" if present (con BaseAddress configurado), else default client
             var client = CreateHttpClient();
-
             client.Timeout = TimeSpan.FromSeconds(30);
 
             // Autenticación
@@ -96,11 +92,12 @@ namespace ForrajeriaJovitaAPI.Services
             var jsonContent = JsonSerializer.Serialize(bodyObj);
             using var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
 
-            var endpoint = $"{apiUrl}{checkoutPath}";
+            // Resolver endpoint a Uri absoluta (más robusto que concatenar strings)
+            var endpointUri = ResolveEndpoint(apiUrl, checkoutPath, client);
 
-            _logger.LogInformation("Payway CreatePayment -> POST {Endpoint} payload size={PayloadSize}", endpoint, jsonContent.Length);
+            _logger.LogInformation("Payway CreatePayment -> POST {Endpoint} payload size={PayloadSize}", endpointUri, jsonContent.Length);
 
-            using var resp = await client.PostAsync(endpoint, content);
+            using var resp = await client.PostAsync(endpointUri, content);
             var raw = await resp.Content.ReadAsStringAsync();
 
             if (!resp.IsSuccessStatusCode)
@@ -138,9 +135,6 @@ namespace ForrajeriaJovitaAPI.Services
             var authType = (_config["Payway:AuthType"] ?? "ApiKey").ToLowerInvariant();
             var publicKey = _config["Payway:PublicKey"];
 
-            if (string.IsNullOrWhiteSpace(apiUrl))
-                throw new InvalidOperationException("Payway:ApiUrl no configurado");
-
             var client = CreateHttpClient();
             client.Timeout = TimeSpan.FromSeconds(15);
 
@@ -166,11 +160,14 @@ namespace ForrajeriaJovitaAPI.Services
             }
 
             var paymentPath = _config["Payway:PaymentStatusPath"] ?? "/v1/payments/{0}";
-            var endpoint = string.Format($"{apiUrl}{paymentPath}", transactionId);
+            var constructedPath = string.Format(paymentPath, transactionId);
+
+            // Resolver endpoint como Uri absoluta
+            var endpointUri = ResolveEndpoint(apiUrl, constructedPath, client);
 
             try
             {
-                using var resp = await client.GetAsync(endpoint);
+                using var resp = await client.GetAsync(endpointUri);
                 var raw = await resp.Content.ReadAsStringAsync();
 
                 if (!resp.IsSuccessStatusCode)
@@ -243,6 +240,40 @@ namespace ForrajeriaJovitaAPI.Services
             }
 
             throw new InvalidOperationException("No se encontró access_token en la respuesta de token.");
+        }
+
+        /// <summary>
+        /// Resuelve una Uri absoluta a partir de:
+        ///  - path si ya es absoluta,
+        ///  - apiUrl + path (si apiUrl está configurada),
+        ///  - client.BaseAddress + path (si el HttpClient tiene BaseAddress).
+        /// Lanza InvalidOperationException con mensaje explícito si no puede resolverse.
+        /// </summary>
+        private static Uri ResolveEndpoint(string? apiUrl, string path, HttpClient client)
+        {
+            // 1) si path ya es absoluto, devolverlo
+            if (Uri.TryCreate(path, UriKind.Absolute, out var absoluteFromPath))
+                return absoluteFromPath;
+
+            // 2) si apiUrl es absoluto, combinarlo con path
+            if (!string.IsNullOrWhiteSpace(apiUrl) && Uri.TryCreate(apiUrl, UriKind.Absolute, out var baseUriFromConfig))
+            {
+                var trimmedPath = (path ?? string.Empty).TrimStart('/');
+                return new Uri(baseUriFromConfig, trimmedPath);
+            }
+
+            // 3) si el cliente tiene BaseAddress, usarla
+            if (client?.BaseAddress != null)
+            {
+                var trimmedPath = (path ?? string.Empty).TrimStart('/');
+                return new Uri(client.BaseAddress, trimmedPath);
+            }
+
+            // 4) no se puede resolver -> lanzar con mensaje claro
+            throw new InvalidOperationException(
+                "No se pudo construir la URI de Payway. Configure Payway:ApiUrl en la configuración (appsettings/env) " +
+                "o registre un HttpClient nombrado 'payway' con BaseAddress. Path recibido: " + (path ?? "(null)")
+            );
         }
 
         private static string? TryGetCheckoutUrl(JsonElement root)
