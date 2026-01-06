@@ -1,4 +1,4 @@
-using System;
+Ôªøusing System;
 using System.Linq;
 using System.Threading.Tasks;
 using ForrajeriaJovitaAPI.Data;
@@ -7,9 +7,8 @@ using ForrajeriaJovitaAPI.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using ForrajeriaJovitaAPI.DTOs.Checkout; // para CheckoutRequestDto, CheckoutResponseDto, CheckoutStockDto
-using ForrajeriaJovitaAPI.DTOs.Payway;   // si usas Payway DTOs aquÌ tambiÈn
-
+using ForrajeriaJovitaAPI.DTOs.Checkout;
+using ForrajeriaJovitaAPI.DTOs.Payway;
 
 namespace ForrajeriaJovitaAPI.Services
 {
@@ -47,14 +46,14 @@ namespace ForrajeriaJovitaAPI.Services
             if (totalPagos != request.Total)
                 throw new ArgumentException("La suma de los pagos no coincide con el total.");
 
-            // SesiÛn de caja abierta
+            // Sesi√≥n de caja abierta
             var cashSession = await _context.CashSessions
                 .Where(c => c.BranchId == OnlineBranchId && !c.IsClosed)
                 .OrderByDescending(c => c.OpenedAt)
                 .FirstOrDefaultAsync();
 
             if (cashSession == null)
-                throw new InvalidOperationException("No hay sesiÛn de caja abierta.");
+                throw new InvalidOperationException("No hay sesi√≥n de caja abierta.");
 
             // CLIENTE (opcional)
             int? clientId = null;
@@ -75,8 +74,8 @@ namespace ForrajeriaJovitaAPI.Services
                 {
                     var newClient = new Client
                     {
-                        FullName = request.Client.FullName,
-                        Phone = request.Client.Phone,
+                        FullName = request.Client.FullName ?? "Cliente",
+                        Phone = request.Client.Phone ?? "",
                         Document = request.Client.Document,
                         Amount = 0,
                         DebitBalance = 0,
@@ -97,26 +96,26 @@ namespace ForrajeriaJovitaAPI.Services
                 .ToListAsync();
 
             if (products.Count != productIds.Count)
-                throw new InvalidOperationException("Un producto no existe o est· inactivo.");
+                throw new InvalidOperationException("Un producto no existe o est√° inactivo.");
 
             // STOCKS
             var stocks = await _context.ProductsStocks
                 .Where(s => productIds.Contains(s.ProductId) && s.BranchId == OnlineBranchId)
                 .ToListAsync();
 
-            // C¡LCULOS
+            // C√ÅLCULOS
             decimal subtotal = 0m;
             decimal discountTotal = 0m;
 
-            // Validaciones y c·lculo del subtotal usando cantidades enteras
+            // Validaciones y c√°lculo del subtotal usando cantidades enteras
             foreach (var item in request.Items)
             {
                 if (item.Quantity <= 0)
-                    throw new InvalidOperationException($"Cantidad inv·lida en producto ID {item.ProductId}");
+                    throw new InvalidOperationException($"Cantidad inv√°lida en producto ID {item.ProductId}");
 
                 // Aceptar solo cantidades enteras
                 if (Math.Abs(item.Quantity - Math.Truncate(item.Quantity)) > 0)
-                    throw new InvalidOperationException($"Cantidad no entera para producto ID {item.ProductId}. Debe ser un n˙mero entero.");
+                    throw new InvalidOperationException($"Cantidad no entera para producto ID {item.ProductId}. Debe ser un n√∫mero entero.");
 
                 var qty = (int)Math.Truncate(item.Quantity);
 
@@ -135,7 +134,7 @@ namespace ForrajeriaJovitaAPI.Services
             if (request.Total < totalCalculado)
                 throw new InvalidOperationException("El total enviado es menor al calculado.");
 
-            // Crear venta + descontar stock + pagos en transacciÛn DB
+            // Crear venta + descontar stock + pagos en transacci√≥n DB
             using var transaction = await _context.Database.BeginTransactionAsync();
             Sale sale;
             try
@@ -199,7 +198,7 @@ namespace ForrajeriaJovitaAPI.Services
 
                 await _context.SaveChangesAsync();
 
-                // PAGOS (sin SurchargeAmount)
+                // PAGOS
                 foreach (var p in request.Payments)
                 {
                     _context.SalesPayments.Add(new SalePayment
@@ -207,7 +206,7 @@ namespace ForrajeriaJovitaAPI.Services
                         SaleId = sale.Id,
                         Method = (PaymentMethod)p.Method,
                         Amount = p.Amount,
-                        Reference = p.Reference,
+                        Reference = p.Reference ?? "",
                         CreationDate = DateTime.UtcNow
                     });
                 }
@@ -221,82 +220,76 @@ namespace ForrajeriaJovitaAPI.Services
                 throw;
             }
 
-            // ---------- Fuera de la transacciÛn: crear checkout en Payway ----------
+            // ‚úÖ CREAR CHECKOUT EN PAYWAY (CORREGIDO)
             string paywayRedirectUrl = null;
             try
             {
-                // descripciÛn y transactionId para Payway
-                var description = $"Pedido #{sale.Id} - Forrajeria Jovita";
-                var transactionId = sale.Id.ToString();
+                // Obtener email del cliente
+                var customerEmail = "cliente@temp.com";
+                var customerName = "Cliente";
+                var customerPhone = "";
 
-                var paywayResult = await _paywayService.CreatePaymentAsync(sale.Total, description, transactionId);
-
-                if (string.IsNullOrWhiteSpace(paywayResult))
+                if (clientId.HasValue)
                 {
-                    _logger.LogError("Payway no devolviÛ URL ni body al crear pago para Sale {SaleId}", sale.Id);
-                    throw new InvalidOperationException("No se recibiÛ respuesta v·lida de Payway.");
-                }
-
-                // Verificar si lo que devolviÛ es una URL
-                if (Uri.TryCreate(paywayResult, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
-                {
-                    paywayRedirectUrl = paywayResult;
-                }
-                else
-                {
-                    // Si CreatePaymentAsync devolviÛ JSON raw en vez de URL, intentamos extraer URL del JSON
-                    if (paywayResult.TrimStart().StartsWith("{"))
+                    var client = await _context.Clients.FindAsync(clientId.Value);
+                    if (client != null)
                     {
-                        try
-                        {
-                            using var doc = System.Text.Json.JsonDocument.Parse(paywayResult);
-                            var root = doc.RootElement;
-                            // intentamos las claves comunes
-                            if (root.TryGetProperty("checkout_url", out var c1) && c1.ValueKind == System.Text.Json.JsonValueKind.String)
-                                paywayRedirectUrl = c1.GetString();
-                            else if (root.TryGetProperty("payment_url", out var c2) && c2.ValueKind == System.Text.Json.JsonValueKind.String)
-                                paywayRedirectUrl = c2.GetString();
-                            else if (root.TryGetProperty("url", out var c3) && c3.ValueKind == System.Text.Json.JsonValueKind.String)
-                                paywayRedirectUrl = c3.GetString();
-                        }
-                        catch (System.Text.Json.JsonException) { /* ignore */ }
+                        customerName = client.FullName ?? "Cliente";
+                        customerPhone = client.Phone ?? "";
+                        // Si ten√©s un campo Email en Client, usalo aqu√≠
+                        // customerEmail = client.Email ?? customerEmail;
                     }
                 }
 
-                if (string.IsNullOrWhiteSpace(paywayRedirectUrl))
-                {
-                    _logger.LogError("No se pudo extraer una URL v·lida de la respuesta de Payway para Sale {SaleId}. Raw: {Raw}", sale.Id, paywayResult.Length <= 1000 ? paywayResult : paywayResult.Substring(0, 1000));
-                    throw new InvalidOperationException("No se obtuvo URL de checkout desde Payway.");
-                }
+                var frontendUrl = _config["Frontend:Url"] ?? "https://forrajeria-jovita.vercel.app";
 
-                // Guardar un registro de PaymentTransaction mÌnimo (model ya presente en el proyecto)
+                // ‚úÖ LLAMADA CORRECTA AL NUEVO PaywayService
+                var paywayResult = await _paywayService.CreatePaymentAsync(new PaywayCheckoutRequest
+                {
+                    SaleId = sale.Id,
+                    Amount = sale.Total,
+                    Description = $"Pedido #{sale.Id} - Forrajer√≠a Jovita",
+                    Customer = new CustomerInfo
+                    {
+                        Name = customerName,
+                        Email = customerEmail,
+                        Phone = customerPhone
+                    },
+                    ReturnUrl = $"{frontendUrl}/pago-exitoso",
+                    CancelUrl = $"{frontendUrl}/pago-cancelado"
+                });
+
+                paywayRedirectUrl = paywayResult.CheckoutUrl;
+
+                // Guardar PaymentTransaction
                 try
                 {
                     var paymentTransaction = new PaymentTransaction
                     {
                         SaleId = sale.Id,
-                        TransactionId = sale.Id.ToString(),
-                        CheckoutId = null,
+                        TransactionId = paywayResult.TransactionId,
+                        CheckoutId = paywayResult.CheckoutId,
                         Status = "pending",
                         Amount = sale.Total,
                         Currency = "ARS",
                         PaymentMethod = "card",
-                        CreatedAt = DateTime.UtcNow,
-                        AdditionalData = paywayResult.Length <= 1000 ? paywayResult : paywayResult.Substring(0, 1000)
+                        CreatedAt = DateTime.UtcNow
                     };
 
                     _context.PaymentTransactions.Add(paymentTransaction);
                     await _context.SaveChangesAsync();
+
+                    _logger.LogInformation("‚úÖ PaymentTransaction guardado para Sale {SaleId}, TransactionId: {TransactionId}",
+                        sale.Id, paywayResult.TransactionId);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "No se pudo guardar PaymentTransaction para Sale {SaleId} (no crÌtico).", sale.Id);
+                    _logger.LogWarning(ex, "No se pudo guardar PaymentTransaction para Sale {SaleId} (no cr√≠tico).", sale.Id);
                 }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error creando checkout en Payway para Sale {SaleId}", sale.Id);
-                // PolÌtica: lanzamos para que el controller devuelva 500 y el frontend no redirija.
                 throw new InvalidOperationException("Error al crear el checkout en Payway. Intente nuevamente.", ex);
             }
 
