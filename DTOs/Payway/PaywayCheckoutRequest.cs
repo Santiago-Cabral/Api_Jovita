@@ -39,13 +39,5 @@ namespace ForrajeriaJovitaAPI.DTOs.Payway
 		public string? CancelUrl { get; set; }
 	}
 
-	/// <summary>
-	/// Información del cliente
-	/// </summary>
-	public class CustomerInfo
-	{
-		public string? Name { get; set; }
-		public string? Email { get; set; }
-		public string? Phone { get; set; }
-	}
+	
 }
