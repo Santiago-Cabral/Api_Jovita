@@ -15,9 +15,4 @@ namespace ForrajeriaJovitaAPI.DTOs.Checkout
         public string? TicketUrl { get; set; }
     }
 
-    public class CheckoutStockDto
-    {
-        public int ProductId { get; set; }
-        public decimal Stock { get; set; }
-    }
 }
