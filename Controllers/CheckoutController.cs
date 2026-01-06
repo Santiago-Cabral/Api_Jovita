@@ -5,6 +5,8 @@ using ForrajeriaJovitaAPI.Models;
 using ForrajeriaJovitaAPI.Services.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using ForrajeriaJovitaAPI.DTOs.Checkout;
+
 
 namespace ForrajeriaJovitaAPI.Controllers
 {

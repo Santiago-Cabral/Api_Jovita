@@ -7,6 +7,9 @@ using ForrajeriaJovitaAPI.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using ForrajeriaJovitaAPI.DTOs.Checkout; // para CheckoutRequestDto, CheckoutResponseDto, CheckoutStockDto
+using ForrajeriaJovitaAPI.DTOs.Payway;   // si usas Payway DTOs aquí también
+
 
 namespace ForrajeriaJovitaAPI.Services
 {

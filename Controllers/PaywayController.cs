@@ -11,6 +11,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using ForrajeriaJovitaAPI.DTOs.Payway;   // para PaywayCheckoutRequest, PaywayCheckoutResponse, PaywayWebhookNotification
+
 
 namespace ForrajeriaJovitaAPI.Controllers
 {
