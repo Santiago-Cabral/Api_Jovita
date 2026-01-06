@@ -1,37 +1,43 @@
 using System;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using ForrajeriaJovitaAPI.Data;
-using ForrajeriaJovitaAPI.DTOs.Checkout;
 using ForrajeriaJovitaAPI.Models;
 using ForrajeriaJovitaAPI.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace ForrajeriaJovitaAPI.Services
 {
     public class CheckoutService : ICheckoutService
     {
         private readonly ForrajeriaContext _context;
+        private readonly ILogger<CheckoutService> _logger;
+        private readonly IConfiguration _config;
 
         private const int OnlineBranchId = 1;
         private const int OnlineSellerUserId = 1;
 
-        public CheckoutService(ForrajeriaContext context)
+        public CheckoutService(ForrajeriaContext context, ILogger<CheckoutService> logger, IConfiguration config)
         {
             _context = context;
+            _logger = logger;
+            _config = config;
         }
 
         public async Task<CheckoutResponseDto> ProcessCheckoutAsync(CheckoutRequestDto request)
         {
             if (request.Items == null || request.Items.Count == 0)
-                throw new Exception("No se enviaron productos.");
+                throw new ArgumentException("No se enviaron productos.");
 
             if (request.Payments == null || request.Payments.Count == 0)
-                throw new Exception("Debe haber al menos un pago.");
+                throw new ArgumentException("Debe haber al menos un pago.");
 
             var totalPagos = request.Payments.Sum(p => p.Amount);
             if (totalPagos != request.Total)
-                throw new Exception("La suma de los pagos no coincide con el total.");
+                throw new ArgumentException("La suma de los pagos no coincide con el total.");
 
             // Sesión de caja abierta
             var cashSession = await _context.CashSessions
@@ -40,11 +46,10 @@ namespace ForrajeriaJovitaAPI.Services
                 .FirstOrDefaultAsync();
 
             if (cashSession == null)
-                throw new Exception("No hay sesión de caja abierta.");
+                throw new InvalidOperationException("No hay sesión de caja abierta.");
 
-            // CLIENTE
+            // CLIENTE (opcional)
             int? clientId = null;
-
             if (request.Client != null && !string.IsNullOrWhiteSpace(request.Client.Document))
             {
                 var existingClient = await _context.Clients
@@ -55,6 +60,8 @@ namespace ForrajeriaJovitaAPI.Services
                     clientId = existingClient.Id;
                     existingClient.FullName = request.Client.FullName;
                     existingClient.Phone = request.Client.Phone;
+                    _context.Clients.Update(existingClient);
+                    await _context.SaveChangesAsync();
                 }
                 else
                 {
@@ -82,7 +89,7 @@ namespace ForrajeriaJovitaAPI.Services
                 .ToListAsync();
 
             if (products.Count != productIds.Count)
-                throw new Exception("Un producto no existe o está inactivo.");
+                throw new InvalidOperationException("Un producto no existe o está inactivo.");
 
             // STOCKS
             var stocks = await _context.ProductsStocks
@@ -90,21 +97,20 @@ namespace ForrajeriaJovitaAPI.Services
                 .ToListAsync();
 
             // CÁLCULOS
-            var subtotal = 0m;
-            var discountTotal = 0m;
+            decimal subtotal = 0m;
+            decimal discountTotal = 0m;
 
             // Validaciones y cálculo del subtotal usando cantidades enteras
             foreach (var item in request.Items)
             {
-                // Validar que la cantidad sea un entero positivo
                 if (item.Quantity <= 0)
-                    throw new Exception($"Cantidad inválida en producto ID {item.ProductId}");
+                    throw new InvalidOperationException($"Cantidad inválida en producto ID {item.ProductId}");
 
-                // Si item.Quantity es decimal: exigir que sea entero
-                if (item.Quantity % 1 != 0)
-                    throw new Exception($"Cantidad no entera para producto ID {item.ProductId}. Debe ser un número entero.");
+                // Aceptar solo cantidades enteras: comprobar que no haya parte fraccionaria
+                if (Math.Abs(item.Quantity - Math.Truncate(item.Quantity)) > 0)
+                    throw new InvalidOperationException($"Cantidad no entera para producto ID {item.ProductId}. Debe ser un número entero.");
 
-                var qty = (int)item.Quantity; // conversión segura
+                var qty = (int)Math.Truncate(item.Quantity);
 
                 var product = products.First(p => p.Id == item.ProductId);
                 var stockEntry = stocks.FirstOrDefault(s => s.ProductId == item.ProductId);
@@ -112,19 +118,16 @@ namespace ForrajeriaJovitaAPI.Services
                 var stockDisponible = stockEntry?.Quantity ?? 0;
 
                 if (stockDisponible < qty)
-                    throw new Exception($"Stock insuficiente: {product.Name}");
+                    throw new InvalidOperationException($"Stock insuficiente: {product.Name}");
 
-                // Calcular subtotal con la cantidad entera
                 subtotal += product.RetailPrice * qty;
             }
 
             var totalCalculado = subtotal - discountTotal;
-
             if (request.Total < totalCalculado)
-                throw new Exception("El total enviado es menor al calculado.");
+                throw new InvalidOperationException("El total enviado es menor al calculado.");
 
             using var transaction = await _context.Database.BeginTransactionAsync();
-
             try
             {
                 // MOVIMIENTO DE CAJA
@@ -149,10 +152,11 @@ namespace ForrajeriaJovitaAPI.Services
                     Subtotal = subtotal,
                     DiscountTotal = discountTotal,
                     Total = request.Total,
-                    CreationDate = DateTime.UtcNow,
-                    // si tenés clientId: asignalo (si deseas)
-                    ClientId = clientId ?? 0
+                    CreationDate = DateTime.UtcNow
                 };
+
+                if (clientId.HasValue)
+                    sale.ClientId = clientId.Value;
 
                 _context.Sales.Add(sale);
                 await _context.SaveChangesAsync();
@@ -163,7 +167,7 @@ namespace ForrajeriaJovitaAPI.Services
                     var product = products.First(p => p.Id == item.ProductId);
                     var stockEntry = stocks.First(s => s.ProductId == item.ProductId);
 
-                    var qty = (int)item.Quantity; // ya validado arriba
+                    var qty = (int)Math.Truncate(item.Quantity);
 
                     _context.SalesItems.Add(new SaleItem
                     {
@@ -179,8 +183,8 @@ namespace ForrajeriaJovitaAPI.Services
                         ProductUnitId = null
                     });
 
-                    // ajustar stock (resta segura: stockEntry.Quantity puede ser decimal o int)
                     stockEntry.Quantity -= qty;
+                    _context.ProductsStocks.Update(stockEntry);
                 }
 
                 await _context.SaveChangesAsync();
@@ -224,4 +228,3 @@ namespace ForrajeriaJovitaAPI.Services
             }
         }
     }
-}

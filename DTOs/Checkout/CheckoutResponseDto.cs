@@ -11,10 +11,13 @@ namespace ForrajeriaJovitaAPI.DTOs.Checkout
         public decimal DiscountTotal { get; set; }
         public decimal Total { get; set; }
         public DateTime SoldAt { get; set; }
-
         public List<CheckoutStockDto> StockActualizado { get; set; } = new();
-
-        // Hook para ticket PDF (implementación futura)
         public string? TicketUrl { get; set; }
+    }
+
+    public class CheckoutStockDto
+    {
+        public int ProductId { get; set; }
+        public decimal Stock { get; set; }
     }
 }

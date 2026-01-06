@@ -1,12 +1,16 @@
-﻿// Controllers/PaywayController.cs
-using Microsoft.AspNetCore.Mvc;
+﻿using System;
+using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using System.Net.Http.Headers;
+using System.Threading;
+using System.Threading.Tasks;
 using ForrajeriaJovitaAPI.Data;
 using ForrajeriaJovitaAPI.Models;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace ForrajeriaJovitaAPI.Controllers
 {
@@ -57,14 +61,14 @@ namespace ForrajeriaJovitaAPI.Controllers
 
                 var transactionId = $"TXN-{request.SaleId}-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
 
-                // 🔧 URLS DE RETORNO CORREGIDAS
-                var frontendUrl = _configuration["Frontend:Url"] ?? "http://localhost:5173";
+                // URLs de retorno
+                var frontendUrl = _configuration["Frontend:Url"] ?? $"{Request.Scheme}://{Request.Host}";
                 var returnUrl = request.ReturnUrl ?? $"{frontendUrl}/payment-success";
                 var cancelUrl = request.CancelUrl ?? $"{frontendUrl}/payment-cancel";
 
                 _logger.LogInformation("🔗 URLs configuradas - Success: {ReturnUrl}, Cancel: {CancelUrl}", returnUrl, cancelUrl);
 
-                // signature method configurable: MD5 (legacy) o HMACSHA256 (preferible si la doc lo pide)
+                // Firma para envío (según spec)
                 var signatureMethod = (_configuration["Payway:SignatureMethod"] ?? "MD5").ToUpperInvariant();
                 var dataToSign = $"{transactionId}{request.Amount}{privateKey}";
 
@@ -85,7 +89,7 @@ namespace ForrajeriaJovitaAPI.Controllers
                     installments = 1,
                     description = request.Description ?? $"Pedido #{request.SaleId} - Forrajeria Jovita",
                     payment_type = "single",
-                    sub_payments = new object[] { },
+                    sub_payments = Array.Empty<object>(),
                     customer = new
                     {
                         id = request.Customer?.Phone ?? "guest",
@@ -104,18 +108,17 @@ namespace ForrajeriaJovitaAPI.Controllers
                 var http = _httpFactory.CreateClient();
                 http.Timeout = TimeSpan.FromSeconds(30);
 
-                // AUTH: según configuración
                 var authType = (_configuration["Payway:AuthType"] ?? "ApiKey").ToLowerInvariant();
                 if (authType == "basic")
                 {
                     var creds = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{publicKey}:{privateKey}"));
-                    http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", creds);
+                    http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", creds);
                 }
                 else
                 {
-                    // ApiKey header
+                    http.DefaultRequestHeaders.Remove("X-API-KEY");
                     http.DefaultRequestHeaders.Remove("apikey");
-                    http.DefaultRequestHeaders.Add("apikey", publicKey);
+                    http.DefaultRequestHeaders.Add("X-API-KEY", publicKey);
                 }
 
                 var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
@@ -148,7 +151,8 @@ namespace ForrajeriaJovitaAPI.Controllers
                     Amount = request.Amount,
                     Currency = "ARS",
                     PaymentMethod = "card",
-                    CreatedAt = DateTime.UtcNow
+                    CreatedAt = DateTime.UtcNow,
+                    AdditionalData = responseBody.Length <= 1000 ? responseBody : responseBody.Substring(0, 1000)
                 };
 
                 _context.PaymentTransactions.Add(transaction);
@@ -156,9 +160,16 @@ namespace ForrajeriaJovitaAPI.Controllers
 
                 _logger.LogInformation("💾 Transacción guardada en BD: {TransactionId}", transactionId);
 
+                var checkoutUrl = paywayResponse.CheckoutUrl ?? paywayResponse.Url;
+                if (string.IsNullOrWhiteSpace(checkoutUrl))
+                {
+                    _logger.LogWarning("No se obtuvo checkoutUrl en la respuesta de Payway: {Raw}", responseBody);
+                    return StatusCode(500, new { error = "No se recibió URL de checkout desde Payway", raw = responseBody });
+                }
+
                 return Ok(new
                 {
-                    CheckoutUrl = paywayResponse.CheckoutUrl ?? paywayResponse.Url,
+                    CheckoutUrl = checkoutUrl,
                     CheckoutId = paywayResponse.Id,
                     TransactionId = transactionId
                 });
@@ -184,7 +195,6 @@ namespace ForrajeriaJovitaAPI.Controllers
         {
             try
             {
-                // Leemos el body raw para validar firma exactamente como lo envía Payway
                 Request.EnableBuffering();
                 using var sr = new StreamReader(Request.Body, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, leaveOpen: true);
                 var rawBody = await sr.ReadToEndAsync();
@@ -200,7 +210,7 @@ namespace ForrajeriaJovitaAPI.Controllers
                     var signatureMethod = (_configuration["Payway:SignatureMethod"] ?? "MD5").ToUpperInvariant();
                     var expectedSignature = signatureMethod switch
                     {
-                        "HMACSHA256" => ComputeHmacSha256Hex(rawBody + privateKey, privateKey),
+                        "HMACSHA256" => ComputeHmacSha256Hex(rawBody, privateKey),
                         _ => ComputeMd5Hex(rawBody + privateKey)
                     };
 
@@ -252,7 +262,6 @@ namespace ForrajeriaJovitaAPI.Controllers
 
                 await _context.SaveChangesAsync(cancellationToken);
 
-                // Responder 200 a Payway
                 return Ok(new { received = true });
             }
             catch (Exception ex)
@@ -263,7 +272,7 @@ namespace ForrajeriaJovitaAPI.Controllers
         }
 
         /// <summary>
-        /// Verificar el estado de un pago
+        /// Verificar el estado de un pago (local + consulta remota si está configurado)
         /// GET: api/payway/payment-status/{transactionId}
         /// </summary>
         [HttpGet("payment-status/{transactionId}")]
@@ -287,8 +296,8 @@ namespace ForrajeriaJovitaAPI.Controllers
                     {
                         var http = _httpFactory.CreateClient();
                         http.Timeout = TimeSpan.FromSeconds(15);
-                        http.DefaultRequestHeaders.Remove("apikey");
-                        http.DefaultRequestHeaders.Add("apikey", publicKey);
+                        http.DefaultRequestHeaders.Remove("X-API-KEY");
+                        http.DefaultRequestHeaders.Add("X-API-KEY", publicKey);
 
                         var response = await http.GetAsync($"{apiUrl}/v1/payments/{transactionId}", cancellationToken);
 
@@ -353,47 +362,4 @@ namespace ForrajeriaJovitaAPI.Controllers
         #endregion
     }
 
-    #region DTOs
-
-    public class PaywayCheckoutRequest
-    {
-        public int SaleId { get; set; }
-        public decimal Amount { get; set; }
-        public string? Description { get; set; }
-        public CustomerInfo? Customer { get; set; }
-        public string? ReturnUrl { get; set; }
-        public string? CancelUrl { get; set; }
-    }
-
-    public class CustomerInfo
-    {
-        public string? Name { get; set; }
-        public string? Email { get; set; }
-        public string? Phone { get; set; }
-    }
-
-    public class PaywayCheckoutResponse
-    {
-        public string? Id { get; set; }
-        public string? CheckoutUrl { get; set; }
-        public string? Url { get; set; }
-    }
-
-    public class PaywayWebhookNotification
-    {
-        public string? SiteTransactionId { get; set; }
-        public string? Status { get; set; }
-        public string? StatusDetail { get; set; }
-        public decimal Amount { get; set; }
-    }
-
-    public class PaywayPaymentStatus
-    {
-        public string? Status { get; set; }
-        public string? StatusDetail { get; set; }
-        public decimal Amount { get; set; }
-        public string? SiteTransactionId { get; set; }
-    }
-
-    #endregion
-}
+    

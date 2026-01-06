@@ -1,9 +1,9 @@
 namespace ForrajeriaJovitaAPI.DTOs.Checkout
 {
-    public class CheckoutClientDto
+    public class ClientDto
     {
-        public string FullName { get; set; } = string.Empty;
-        public string Phone { get; set; } = string.Empty;
-        public string Document { get; set; } = string.Empty;
+        public string? FullName { get; set; }
+        public string? Phone { get; set; }
+        public string? Document { get; set; }
     }
 }
