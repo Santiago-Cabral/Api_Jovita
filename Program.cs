@@ -30,17 +30,19 @@ builder.Services.AddDbContext<ForrajeriaContext>(options =>
 // ============================================================
 builder.Services.AddHttpClient();
 
+// Cliente HTTP nombrado para Payway con BaseAddress configurada
 builder.Services.AddHttpClient("payway", client =>
 {
     var apiUrl = builder.Configuration["Payway:ApiUrl"];
     if (!string.IsNullOrWhiteSpace(apiUrl))
+    {
         client.BaseAddress = new Uri(apiUrl.TrimEnd('/'));
-
+    }
     client.Timeout = TimeSpan.FromSeconds(30);
 });
 
 // ============================================================
-// JWT CONFIG (SIN SETTINGS EXTRA)
+// JWT CONFIG
 // ============================================================
 var jwtKey = builder.Configuration["Jwt:Key"] ?? throw new Exception("Jwt:Key no configurado");
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? throw new Exception("Jwt:Issuer no configurado");
@@ -79,11 +81,10 @@ builder.Services.AddScoped<IClientService, ClientService>();
 builder.Services.AddScoped<IBranchService, BranchService>();
 builder.Services.AddScoped<ICategoryService, CategoryService>();
 builder.Services.AddScoped<IClientAccountService, ClientAccountService>();
-
 builder.Services.AddScoped<IVentaService, VentaService>();
 builder.Services.AddScoped<ICheckoutService, CheckoutService>();
 
-// Payway
+// ✅ Servicio de Payway
 builder.Services.AddScoped<IPaywayService, PaywayService>();
 
 // ============================================================
@@ -125,7 +126,8 @@ builder.Services.AddSwaggerGen(c =>
     c.SwaggerDoc("v1", new OpenApiInfo
     {
         Title = "ForrajeriaJovitaAPI",
-        Version = "v1"
+        Version = "v1",
+        Description = "API para Forrajería Jovita - Sistema de ventas y pagos"
     });
 
     var jwtScheme = new OpenApiSecurityScheme
@@ -135,7 +137,7 @@ builder.Services.AddSwaggerGen(c =>
         Scheme = "bearer",
         BearerFormat = "JWT",
         In = ParameterLocation.Header,
-        Description = "Bearer token",
+        Description = "Ingrese el token JWT con el prefijo 'Bearer '",
         Reference = new OpenApiReference
         {
             Type = ReferenceType.SecurityScheme,
@@ -156,7 +158,6 @@ var app = builder.Build();
 // PIPELINE
 // ============================================================
 app.UseHttpsRedirection();
-
 app.UseRouting();
 app.UseCors("AllowFrontend");
 
@@ -164,19 +165,28 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.UseSwagger();
-app.UseSwaggerUI();
+app.UseSwaggerUI(c =>
+{
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "ForrajeriaJovitaAPI v1");
+    c.RoutePrefix = "swagger";
+});
 
 app.MapControllers();
 
+// Health check endpoint
 app.MapGet("/api/health", () => Results.Ok(new
 {
     status = "OK",
     service = "Forrajeria Jovita API",
-    time = DateTime.UtcNow
-}));
+    version = "1.0.0",
+    time = DateTime.UtcNow,
+    environment = app.Environment.EnvironmentName
+})).WithTags("Health");
 
 var logger = app.Services.GetRequiredService<ILogger<Program>>();
 logger.LogInformation("🚀 API Forrajeria Jovita iniciada");
-logger.LogInformation("Environment: {Env}", app.Environment.EnvironmentName);
+logger.LogInformation("📍 Environment: {Env}", app.Environment.EnvironmentName);
+logger.LogInformation("🌐 CORS habilitado para: localhost:5173, localhost:3000, forrajeria-jovita.vercel.app");
+logger.LogInformation("💳 Payway configurado en: {PaywayUrl}", builder.Configuration["Payway:ApiUrl"]);
 
 app.Run();

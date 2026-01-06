@@ -1,323 +1,127 @@
-// Services/PaywayService.cs
+Ôªø// Services/PaywayService.cs
 using System;
-using System.Collections.Generic;
 using System.Net.Http;
-using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using ForrajeriaJovitaAPI.DTOs.Payway;   // para PaywayPaymentStatus, etc.
+using ForrajeriaJovitaAPI.DTOs.Payway;
 
 namespace ForrajeriaJovitaAPI.Services
 {
-    public interface IPaywayService
-    {
-        /// <summary>
-        /// Crea un checkout en Payway. Devuelve preferentemente la URL de checkout (checkout_url/payment_url/...).
-        /// Si Payway no devuelve una URL, devuelve el body raw (JSON).
-        /// </summary>
-        Task<string> CreatePaymentAsync(decimal amount, string description, string? transactionId = null);
-
-        /// <summary>
-        /// Consulta estado de pago (intenta la ruta /v1/payments/{transactionId} por defecto).
-        /// </summary>
-        Task<PaywayPaymentStatus?> GetPaymentStatusAsync(string transactionId);
-    }
-
     public class PaywayService : IPaywayService
     {
-        private readonly IConfiguration _config;
-        private readonly IHttpClientFactory _httpFactory;
+        private readonly HttpClient _httpClient;
+        private readonly IConfiguration _configuration;
         private readonly ILogger<PaywayService> _logger;
+        private readonly string _privateKey;
+        private readonly string _siteId;
 
-        public PaywayService(IConfiguration config, IHttpClientFactory httpFactory, ILogger<PaywayService> logger)
+        public PaywayService(
+            IHttpClientFactory httpClientFactory,
+            IConfiguration configuration,
+            ILogger<PaywayService> logger)
         {
-            _config = config ?? throw new ArgumentNullException(nameof(config));
-            _httpFactory = httpFactory ?? throw new ArgumentNullException(nameof(httpFactory));
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _httpClient = httpClientFactory.CreateClient("payway");
+            _configuration = configuration;
+            _logger = logger;
+
+            // Leer credenciales (desde User Secrets en desarrollo)
+            _privateKey = configuration["Payway:PrivateKey"]
+                ?? throw new InvalidOperationException("Payway:PrivateKey no configurado");
+            _siteId = configuration["Payway:SiteId"]
+                ?? throw new InvalidOperationException("Payway:SiteId no configurado");
         }
 
-        public async Task<string> CreatePaymentAsync(decimal amount, string description, string? transactionId = null)
+        public async Task<PaywayCheckoutResponse> CreatePaymentAsync(PaywayCheckoutRequest request)
         {
-            var apiUrl = (_config["Payway:ApiUrl"] ?? "").TrimEnd('/');
-            var checkoutPath = _config["Payway:CheckoutPath"] ?? "/v1/checkouts";
-            var authType = (_config["Payway:AuthType"] ?? "ApiKey").ToLowerInvariant();
-
-            // Credenciales
-            var publicKey = _config["Payway:PublicKey"];
-            var privateKey = _config["Payway:PrivateKey"];
-
-            var bodyObj = new
-            {
-                site_transaction_id = transactionId ?? Guid.NewGuid().ToString(),
-                token = publicKey,
-                amount = amount,
-                currency = "ARS",
-                installments = 1,
-                description = description
-            };
-
-            // Use named client "payway" if present (con BaseAddress configurado), else default client
-            var client = CreateHttpClient();
-            client.Timeout = TimeSpan.FromSeconds(30);
-
-            // AutenticaciÛn
-            if (authType == "basic")
-            {
-                if (string.IsNullOrEmpty(publicKey) || string.IsNullOrEmpty(privateKey))
-                    throw new InvalidOperationException("PublicKey/PrivateKey requeridos para AuthType=Basic");
-
-                var creds = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{publicKey}:{privateKey}"));
-                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", creds);
-            }
-            else if (authType == "oauth2")
-            {
-                // OAuth2 Client Credentials
-                var token = await GetOAuthTokenAsync();
-                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-            }
-            else // ApiKey por defecto
-            {
-                if (string.IsNullOrEmpty(publicKey))
-                    throw new InvalidOperationException("PublicKey requerido para AuthType=ApiKey");
-
-                // algunos providers aceptan "X-API-KEY" o "apikey" ó usamos X-API-KEY
-                client.DefaultRequestHeaders.Remove("X-API-KEY");
-                client.DefaultRequestHeaders.Remove("apikey");
-                client.DefaultRequestHeaders.Add("X-API-KEY", publicKey);
-            }
-
-            var jsonContent = JsonSerializer.Serialize(bodyObj);
-            using var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
-
-            // Resolver endpoint a Uri absoluta (m·s robusto que concatenar strings)
-            var endpointUri = ResolveEndpoint(apiUrl, checkoutPath, client);
-
-            _logger.LogInformation("Payway CreatePayment -> POST {Endpoint} payload size={PayloadSize}", endpointUri, jsonContent.Length);
-
-            using var resp = await client.PostAsync(endpointUri, content);
-            var raw = await resp.Content.ReadAsStringAsync();
-
-            if (!resp.IsSuccessStatusCode)
-            {
-                _logger.LogError("Payway CreatePayment error: {Status} - {Body}", resp.StatusCode, raw);
-                // Devolver contenido raw para diagnÛstico o lanzar excepciÛn seg˙n tu polÌtica
-                throw new InvalidOperationException($"Payway error: {resp.StatusCode} - {TrimForLog(raw)}");
-            }
-
-            // Intentar extraer la URL de checkout de forma robusta
             try
             {
-                using var doc = JsonDocument.Parse(raw);
-                var root = doc.RootElement;
-                var url = TryGetCheckoutUrl(root);
-                if (!string.IsNullOrWhiteSpace(url))
+                _logger.LogInformation("üîµ Creando pago Payway Forms - Amount: {Amount}, Email: {Email}",
+                    request.Amount, request.Customer?.Email);
+
+                // Generar ID de transacci√≥n √∫nico
+                var transactionId = $"JOV_{DateTime.Now:yyyyMMddHHmmss}_{request.SaleId}";
+
+                // Payload para Payway Ventas Online (Forms)
+                var payload = new
                 {
-                    _logger.LogInformation("Payway checkout url encontrada: {Url}", url);
-                    return url;
-                }
-            }
-            catch (JsonException je)
-            {
-                _logger.LogWarning(je, "Respuesta de Payway no es JSON v·lido");
-            }
+                    amount = (int)(request.Amount * 100), // Convertir a centavos
+                    currency = "ARS",
+                    description = request.Description ?? $"Pedido #{request.SaleId} - Forrajer√≠a Jovita",
+                    customer = new
+                    {
+                        email = request.Customer?.Email ?? "cliente@temp.com",
+                        name = request.Customer?.Name ?? "Cliente"
+                    },
+                    site_id = _siteId,
+                    site_transaction_id = transactionId,
+                    payment_type = "single",
+                    back_url = request.CancelUrl,
+                    success_url = request.ReturnUrl,
+                    failure_url = request.CancelUrl
+                };
 
-            // Si no encontramos URL, retornar raw JSON (o string)
-            _logger.LogWarning("No se encontrÛ checkout URL en la respuesta de Payway. Devolviendo raw body.");
-            return raw;
-        }
+                _logger.LogDebug("üì§ Payload Payway: {Payload}", JsonSerializer.Serialize(payload));
 
-        public async Task<PaywayPaymentStatus?> GetPaymentStatusAsync(string transactionId)
-        {
-            var apiUrl = (_config["Payway:ApiUrl"] ?? "").TrimEnd('/');
-            var authType = (_config["Payway:AuthType"] ?? "ApiKey").ToLowerInvariant();
-            var publicKey = _config["Payway:PublicKey"];
+                // Configurar headers
+                _httpClient.DefaultRequestHeaders.Clear();
+                _httpClient.DefaultRequestHeaders.Add("x-api-key", _privateKey);
 
-            var client = CreateHttpClient();
-            client.Timeout = TimeSpan.FromSeconds(15);
+                var content = new StringContent(
+                    JsonSerializer.Serialize(payload),
+                    Encoding.UTF8,
+                    "application/json"
+                );
 
-            if (authType == "basic")
-            {
-                var privateKey = _config["Payway:PrivateKey"];
-                if (string.IsNullOrEmpty(publicKey) || string.IsNullOrEmpty(privateKey))
-                    throw new InvalidOperationException("PublicKey/PrivateKey requeridos para AuthType=Basic");
-                var creds = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{publicKey}:{privateKey}"));
-                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", creds);
-            }
-            else if (authType == "oauth2")
-            {
-                var token = await GetOAuthTokenAsync();
-                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-            }
-            else // ApiKey
-            {
-                if (string.IsNullOrEmpty(publicKey))
-                    throw new InvalidOperationException("PublicKey requerido para AuthType=ApiKey");
-                client.DefaultRequestHeaders.Remove("X-API-KEY");
-                client.DefaultRequestHeaders.Add("X-API-KEY", publicKey);
-            }
+                // Llamar a Payway API
+                var response = await _httpClient.PostAsync("/v1.2/forms/validate", content);
+                var responseBody = await response.Content.ReadAsStringAsync();
 
-            var paymentPath = _config["Payway:PaymentStatusPath"] ?? "/v1/payments/{0}";
-            var constructedPath = string.Format(paymentPath, transactionId);
+                _logger.LogInformation("üì• Respuesta Payway: Status={Status}, Body={Body}",
+                    response.StatusCode, responseBody);
 
-            // Resolver endpoint como Uri absoluta
-            var endpointUri = ResolveEndpoint(apiUrl, constructedPath, client);
-
-            try
-            {
-                using var resp = await client.GetAsync(endpointUri);
-                var raw = await resp.Content.ReadAsStringAsync();
-
-                if (!resp.IsSuccessStatusCode)
+                if (!response.IsSuccessStatusCode)
                 {
-                    _logger.LogWarning("Payway GetPaymentStatus non-success: {Status} - {Body}", resp.StatusCode, TrimForLog(raw));
-                    return null;
+                    _logger.LogError("‚ùå Error Payway: {Status} - {Body}", response.StatusCode, responseBody);
+                    throw new Exception($"Error de Payway: {response.StatusCode} - {responseBody}");
                 }
 
-                var payment = JsonSerializer.Deserialize<PaywayPaymentStatus>(raw, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                return payment;
+                // Parsear respuesta
+                var paywayResponse = JsonSerializer.Deserialize<PaywayFormsResponse>(responseBody,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                if (paywayResponse?.Hash == null)
+                {
+                    _logger.LogError("‚ùå Respuesta inv√°lida de Payway (sin hash): {Body}", responseBody);
+                    throw new Exception("Payway no devolvi√≥ un hash v√°lido");
+                }
+
+                // Construir URL del formulario
+                var checkoutUrl = $"https://api.decidir.com/web/form?hash={paywayResponse.Hash}";
+
+                _logger.LogInformation("‚úÖ Checkout creado exitosamente - Hash: {Hash}", paywayResponse.Hash);
+
+                return new PaywayCheckoutResponse
+                {
+                    CheckoutUrl = checkoutUrl,
+                    CheckoutId = paywayResponse.Hash,
+                    TransactionId = transactionId
+                };
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Error consultando estado de pago en Payway");
-                return null;
+                _logger.LogError(ex, "üí• Error al crear checkout en Payway");
+                throw;
             }
         }
+    }
 
-        #region Helpers
-
-        private HttpClient CreateHttpClient()
-        {
-            // Intenta obtener el cliente nombrado "payway" (registrado en Program.cs si dese·s)
-            try
-            {
-                return _httpFactory.CreateClient("payway");
-            }
-            catch
-            {
-                // fallback al cliente por defecto
-                return _httpFactory.CreateClient();
-            }
-        }
-
-        private async Task<string> GetOAuthTokenAsync()
-        {
-            // Espera: Payway:TokenUrl, Payway:ClientId, Payway:ClientSecret
-            var tokenUrl = _config["Payway:TokenUrl"];
-            var clientId = _config["Payway:ClientId"];
-            var clientSecret = _config["Payway:ClientSecret"];
-
-            if (string.IsNullOrEmpty(tokenUrl) || string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(clientSecret))
-                throw new InvalidOperationException("Payway OAuth2 requiere TokenUrl, ClientId y ClientSecret en configuraciÛn.");
-
-            var client = _httpFactory.CreateClient();
-            var form = new[]
-            {
-                new KeyValuePair<string,string>("grant_type","client_credentials"),
-                new KeyValuePair<string,string>("client_id", clientId),
-                new KeyValuePair<string,string>("client_secret", clientSecret)
-            };
-
-            using var resp = await client.PostAsync(tokenUrl, new FormUrlEncodedContent(form));
-            var raw = await resp.Content.ReadAsStringAsync();
-            if (!resp.IsSuccessStatusCode)
-            {
-                _logger.LogError("Error obteniendo OAuth token de Payway: {Status} - {Body}", resp.StatusCode, TrimForLog(raw));
-                throw new InvalidOperationException($"Error obteniendo token: {resp.StatusCode} - {TrimForLog(raw)}");
-            }
-
-            try
-            {
-                using var doc = JsonDocument.Parse(raw);
-                if (doc.RootElement.TryGetProperty("access_token", out var t))
-                    return t.GetString()!;
-            }
-            catch (JsonException)
-            {
-                _logger.LogError("OAuth token response no es JSON v·lido: {Raw}", TrimForLog(raw));
-            }
-
-            throw new InvalidOperationException("No se encontrÛ access_token en la respuesta de token.");
-        }
-
-        /// <summary>
-        /// Resuelve una Uri absoluta a partir de:
-        ///  - path si ya es absoluta,
-        ///  - apiUrl + path (si apiUrl est· configurada),
-        ///  - client.BaseAddress + path (si el HttpClient tiene BaseAddress).
-        /// Lanza InvalidOperationException con mensaje explÌcito si no puede resolverse.
-        /// </summary>
-        private static Uri ResolveEndpoint(string? apiUrl, string path, HttpClient client)
-        {
-            // 1) si path ya es absoluto, devolverlo
-            if (Uri.TryCreate(path, UriKind.Absolute, out var absoluteFromPath))
-                return absoluteFromPath;
-
-            // 2) si apiUrl es absoluto, combinarlo con path
-            if (!string.IsNullOrWhiteSpace(apiUrl) && Uri.TryCreate(apiUrl, UriKind.Absolute, out var baseUriFromConfig))
-            {
-                var trimmedPath = (path ?? string.Empty).TrimStart('/');
-                return new Uri(baseUriFromConfig, trimmedPath);
-            }
-
-            // 3) si el cliente tiene BaseAddress, usarla
-            if (client?.BaseAddress != null)
-            {
-                var trimmedPath = (path ?? string.Empty).TrimStart('/');
-                return new Uri(client.BaseAddress, trimmedPath);
-            }
-
-            // 4) no se puede resolver -> lanzar con mensaje claro
-            throw new InvalidOperationException(
-                "No se pudo construir la URI de Payway. Configure Payway:ApiUrl en la configuraciÛn (appsettings/env) " +
-                "o registre un HttpClient nombrado 'payway' con BaseAddress. Path recibido: " + (path ?? "(null)")
-            );
-        }
-
-        private static string? TryGetCheckoutUrl(JsonElement root)
-        {
-            // patrones comunes
-            if (root.ValueKind == JsonValueKind.Object)
-            {
-                if (root.TryGetProperty("checkout_url", out var v) && v.ValueKind == JsonValueKind.String) return v.GetString();
-                if (root.TryGetProperty("payment_url", out v) && v.ValueKind == JsonValueKind.String) return v.GetString();
-                if (root.TryGetProperty("redirect_url", out v) && v.ValueKind == JsonValueKind.String) return v.GetString();
-                if (root.TryGetProperty("url", out v) && v.ValueKind == JsonValueKind.String) return v.GetString();
-
-                if (root.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Object)
-                {
-                    if (data.TryGetProperty("checkout_url", out var d1) && d1.ValueKind == JsonValueKind.String) return d1.GetString();
-                    if (data.TryGetProperty("url", out var d2) && d2.ValueKind == JsonValueKind.String) return d2.GetString();
-                }
-
-                if (root.TryGetProperty("links", out var links) && links.ValueKind == JsonValueKind.Object)
-                {
-                    if (links.TryGetProperty("checkout", out var l1) && l1.ValueKind == JsonValueKind.String) return l1.GetString();
-                    if (links.TryGetProperty("self", out var l2) && l2.ValueKind == JsonValueKind.String) return l2.GetString();
-                }
-
-                // buscar en cualquier propiedad que sea objeto con 'url' o 'checkout_url'
-                foreach (var prop in root.EnumerateObject())
-                {
-                    if (prop.Value.ValueKind == JsonValueKind.Object)
-                    {
-                        if (prop.Value.TryGetProperty("url", out var px) && px.ValueKind == JsonValueKind.String) return px.GetString();
-                        if (prop.Value.TryGetProperty("checkout_url", out var px2) && px2.ValueKind == JsonValueKind.String) return px2.GetString();
-                    }
-                }
-            }
-
-            return null;
-        }
-
-        private static string TrimForLog(string? s, int max = 1000)
-        {
-            if (string.IsNullOrEmpty(s)) return string.Empty;
-            return s.Length <= max ? s : s.Substring(0, max) + "...(truncated)";
-        }
-
-        #endregion
+    // DTO interno para la respuesta de Payway Forms
+    internal class PaywayFormsResponse
+    {
+        public string? Hash { get; set; }
+        public string? Status { get; set; }
     }
 }

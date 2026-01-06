@@ -1,18 +1,17 @@
-﻿using System;
+﻿// Controllers/PaywayController.cs
+using System;
 using System.IO;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
+using Microsoft.EntityFrameworkCore;
+using ForrajeriaJovitaAPI.DTOs.Payway;
+using ForrajeriaJovitaAPI.Services;
 using ForrajeriaJovitaAPI.Data;
 using ForrajeriaJovitaAPI.Models;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
-using ForrajeriaJovitaAPI.DTOs.Payway;   // para PaywayCheckoutRequest, PaywayCheckoutResponse, PaywayWebhookNotification
-
 
 namespace ForrajeriaJovitaAPI.Controllers
 {
@@ -20,220 +19,108 @@ namespace ForrajeriaJovitaAPI.Controllers
     [ApiController]
     public class PaywayController : ControllerBase
     {
-        private readonly IConfiguration _configuration;
+        private readonly IPaywayService _paywayService;
         private readonly ILogger<PaywayController> _logger;
-        private readonly IHttpClientFactory _httpFactory;
         private readonly ForrajeriaContext _context;
 
         public PaywayController(
-            IConfiguration configuration,
+            IPaywayService paywayService,
             ILogger<PaywayController> logger,
-            IHttpClientFactory httpClientFactory,
             ForrajeriaContext context)
         {
-            _configuration = configuration;
+            _paywayService = paywayService;
             _logger = logger;
-            _httpFactory = httpClientFactory;
             _context = context;
         }
 
         /// <summary>
-        /// Crear checkout en Payway
-        /// POST: api/payway/create-checkout
+        /// Crear checkout en Payway Ventas Online (Forms)
+        /// POST: api/Payway/create-checkout
         /// </summary>
         [HttpPost("create-checkout")]
-        public async Task<IActionResult> CreateCheckout([FromBody] PaywayCheckoutRequest request, CancellationToken cancellationToken)
+        public async Task<IActionResult> CreateCheckout(
+            [FromBody] PaywayCheckoutRequest request,
+            CancellationToken cancellationToken)
         {
             try
             {
-                _logger.LogInformation("📤 Creando checkout Payway para Sale ID: {SaleId}", request.SaleId);
+                _logger.LogInformation("📤 Iniciando checkout Payway para Sale ID: {SaleId}", request.SaleId);
 
+                // Validaciones básicas
                 if (request.SaleId <= 0 || request.Amount <= 0)
-                    return BadRequest(new { error = "Datos incompletos" });
-
-                var publicKey = _configuration["Payway:PublicKey"];
-                var privateKey = _configuration["Payway:PrivateKey"];
-                var apiUrl = _configuration["Payway:ApiUrl"]?.TrimEnd('/') ?? throw new Exception("Payway:ApiUrl no configurado");
-
-                if (string.IsNullOrEmpty(publicKey) || string.IsNullOrEmpty(privateKey))
                 {
-                    _logger.LogError("❌ Credenciales de Payway no configuradas");
-                    return StatusCode(500, new { error = "Credenciales de Payway no configuradas" });
+                    return BadRequest(new { error = "SaleId y Amount son requeridos y deben ser mayores a 0" });
                 }
 
-                var transactionId = $"TXN-{request.SaleId}-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
-
-                // URLs de retorno
-                var frontendUrl = _configuration["Frontend:Url"] ?? $"{Request.Scheme}://{Request.Host}";
-                var returnUrl = request.ReturnUrl ?? $"{frontendUrl}/payment-success";
-                var cancelUrl = request.CancelUrl ?? $"{frontendUrl}/payment-cancel";
-
-                _logger.LogInformation("🔗 URLs configuradas - Success: {ReturnUrl}, Cancel: {CancelUrl}", returnUrl, cancelUrl);
-
-                // Firma para envío (según spec)
-                var signatureMethod = (_configuration["Payway:SignatureMethod"] ?? "MD5").ToUpperInvariant();
-                var dataToSign = $"{transactionId}{request.Amount}{privateKey}";
-
-                string signature = signatureMethod switch
+                if (string.IsNullOrEmpty(request.Customer?.Email))
                 {
-                    "HMACSHA256" => ComputeHmacSha256Hex(dataToSign, privateKey),
-                    _ => ComputeMd5Hex(dataToSign)
-                };
-
-                var payload = new
-                {
-                    site_transaction_id = transactionId,
-                    token = publicKey,
-                    payment_method_id = 1,
-                    bin = (string?)null,
-                    amount = request.Amount,
-                    currency = "ARS",
-                    installments = 1,
-                    description = request.Description ?? $"Pedido #{request.SaleId} - Forrajeria Jovita",
-                    payment_type = "single",
-                    sub_payments = Array.Empty<object>(),
-                    customer = new
-                    {
-                        id = request.Customer?.Phone ?? "guest",
-                        email = request.Customer?.Email ?? $"{request.Customer?.Phone ?? "guest"}@temp.com",
-                        name = request.Customer?.Name ?? "Cliente Web",
-                        identification = new { type = "dni", number = "00000000" }
-                    },
-                    return_url = returnUrl,
-                    cancel_url = cancelUrl,
-                    fraud_detection = new { send_to_cs = false, channel = "Web" },
-                    signature = signature
-                };
-
-                _logger.LogDebug("📦 Payload Payway (masked): {Payload}", JsonSerializer.Serialize(payload));
-
-                var http = _httpFactory.CreateClient();
-                http.Timeout = TimeSpan.FromSeconds(30);
-
-                var authType = (_configuration["Payway:AuthType"] ?? "ApiKey").ToLowerInvariant();
-                if (authType == "basic")
-                {
-                    var creds = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{publicKey}:{privateKey}"));
-                    http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", creds);
-                }
-                else
-                {
-                    http.DefaultRequestHeaders.Remove("X-API-KEY");
-                    http.DefaultRequestHeaders.Remove("apikey");
-                    http.DefaultRequestHeaders.Add("X-API-KEY", publicKey);
+                    return BadRequest(new { error = "Email del cliente es requerido" });
                 }
 
-                var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+                // Crear checkout en Payway
+                var result = await _paywayService.CreatePaymentAsync(request);
 
-                var response = await http.PostAsync($"{apiUrl}/v1/checkouts", content, cancellationToken);
-                var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
-
-                if (!response.IsSuccessStatusCode)
-                {
-                    _logger.LogError("❌ Error de Payway: {Status} {Response}", response.StatusCode, responseBody);
-                    return BadRequest(new { error = "Error al crear el checkout", details = responseBody });
-                }
-
-                var paywayResponse = JsonSerializer.Deserialize<PaywayCheckoutResponse>(responseBody,
-                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-
-                if (paywayResponse == null)
-                {
-                    _logger.LogError("❌ Respuesta inválida de Payway: {Response}", responseBody);
-                    return StatusCode(500, new { error = "Respuesta inválida de Payway" });
-                }
-
-                // Guardar la transacción en la base de datos
+                // Guardar transacción en base de datos
                 var transaction = new PaymentTransaction
                 {
                     SaleId = request.SaleId,
-                    TransactionId = transactionId,
-                    CheckoutId = paywayResponse.Id,
+                    TransactionId = result.TransactionId,
+                    CheckoutId = result.CheckoutId,
                     Status = "pending",
                     Amount = request.Amount,
                     Currency = "ARS",
                     PaymentMethod = "card",
-                    CreatedAt = DateTime.UtcNow,
-                    AdditionalData = responseBody.Length <= 1000 ? responseBody : responseBody.Substring(0, 1000)
+                    CreatedAt = DateTime.UtcNow
                 };
 
                 _context.PaymentTransactions.Add(transaction);
                 await _context.SaveChangesAsync(cancellationToken);
 
-                _logger.LogInformation("💾 Transacción guardada en BD: {TransactionId}", transactionId);
+                _logger.LogInformation("✅ Checkout creado - TransactionId: {TransactionId}, URL: {CheckoutUrl}",
+                    result.TransactionId, result.CheckoutUrl);
 
-                var checkoutUrl = paywayResponse.CheckoutUrl ?? paywayResponse.Url;
-                if (string.IsNullOrWhiteSpace(checkoutUrl))
-                {
-                    _logger.LogWarning("No se obtuvo checkoutUrl en la respuesta de Payway: {Raw}", responseBody);
-                    return StatusCode(500, new { error = "No se recibió URL de checkout desde Payway", raw = responseBody });
-                }
-
-                return Ok(new
-                {
-                    CheckoutUrl = checkoutUrl,
-                    CheckoutId = paywayResponse.Id,
-                    TransactionId = transactionId
-                });
+                return Ok(result);
             }
-            catch (OperationCanceledException)
+            catch (InvalidOperationException ex)
             {
-                _logger.LogWarning("⏱ Request cancelado por timeout o token");
-                return StatusCode(408, new { error = "Request timeout" });
+                _logger.LogError(ex, "❌ Error de configuración");
+                return StatusCode(500, new { error = "Error de configuración del servidor", message = ex.Message });
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "❌ Error al crear checkout");
-                return StatusCode(500, new { error = "Error interno del servidor", message = ex.Message });
+                return StatusCode(500, new { error = "Error al procesar el pago", message = ex.Message });
             }
         }
 
         /// <summary>
-        /// Webhook para recibir notificaciones de Payway
-        /// POST: api/payway/webhook
+        /// Webhook para notificaciones de Payway
+        /// POST: api/Payway/webhook
         /// </summary>
         [HttpPost("webhook")]
         public async Task<IActionResult> Webhook(CancellationToken cancellationToken)
         {
             try
             {
+                // Leer el body raw
                 Request.EnableBuffering();
-                using var sr = new StreamReader(Request.Body, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, leaveOpen: true);
-                var rawBody = await sr.ReadToEndAsync();
+                using var reader = new StreamReader(Request.Body, Encoding.UTF8, leaveOpen: true);
+                var body = await reader.ReadToEndAsync();
                 Request.Body.Position = 0;
 
-                _logger.LogInformation("🔔 Raw webhook body recibido: {Body}", rawBody);
+                _logger.LogInformation("🔔 Webhook recibido de Payway: {Body}", body);
 
-                var privateKey = _configuration["Payway:PrivateKey"];
-                var receivedSignature = Request.Headers["x-payway-signature"].ToString();
-
-                if (!string.IsNullOrEmpty(receivedSignature) && !string.IsNullOrEmpty(privateKey))
-                {
-                    var signatureMethod = (_configuration["Payway:SignatureMethod"] ?? "MD5").ToUpperInvariant();
-                    var expectedSignature = signatureMethod switch
-                    {
-                        "HMACSHA256" => ComputeHmacSha256Hex(rawBody, privateKey),
-                        _ => ComputeMd5Hex(rawBody + privateKey)
-                    };
-
-                    if (!string.Equals(receivedSignature, expectedSignature, StringComparison.OrdinalIgnoreCase))
-                    {
-                        _logger.LogError("❌ Firma inválida en webhook. Received: {Received} Expected: {Expected}", receivedSignature, expectedSignature);
-                        return Unauthorized(new { error = "Firma inválida" });
-                    }
-                }
-
-                var notification = JsonSerializer.Deserialize<PaywayWebhookNotification>(rawBody,
+                // Parsear notificación
+                var notification = JsonSerializer.Deserialize<PaywayWebhookNotification>(body,
                     new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
-                if (notification == null)
+                if (notification == null || string.IsNullOrEmpty(notification.SiteTransactionId))
                 {
-                    _logger.LogWarning("⚠️ Webhook: payload inválido");
+                    _logger.LogWarning("⚠️ Webhook inválido: payload mal formado");
                     return BadRequest(new { error = "Payload inválido" });
                 }
 
-                _logger.LogInformation("🔔 Notificación de Payway (parsed): {Notification}", JsonSerializer.Serialize(notification));
-
+                // Buscar transacción
                 var transaction = await _context.PaymentTransactions
                     .Include(t => t.Sale)
                     .FirstOrDefaultAsync(t => t.TransactionId == notification.SiteTransactionId, cancellationToken);
@@ -244,27 +131,48 @@ namespace ForrajeriaJovitaAPI.Controllers
                     return NotFound(new { error = "Transacción no encontrada" });
                 }
 
+                // Actualizar estado
+                var oldStatus = transaction.Status;
                 transaction.Status = notification.Status?.ToLower() ?? transaction.Status;
                 transaction.StatusDetail = notification.StatusDetail;
                 transaction.UpdatedAt = DateTime.UtcNow;
 
+                // Actualizar estado de la venta según el resultado
                 switch (transaction.Status)
                 {
                     case "approved":
                         transaction.CompletedAt = DateTime.UtcNow;
-                        if (transaction.Sale != null) transaction.Sale.PaymentStatus = 1;
+                        if (transaction.Sale != null)
+                        {
+                            transaction.Sale.PaymentStatus = 1; // Aprobado
+                        }
+                        _logger.LogInformation("✅ Pago aprobado - TransactionId: {TransactionId}", transaction.TransactionId);
                         break;
+
                     case "rejected":
-                        if (transaction.Sale != null) transaction.Sale.PaymentStatus = 2;
+                        if (transaction.Sale != null)
+                        {
+                            transaction.Sale.PaymentStatus = 2; // Rechazado
+                        }
+                        _logger.LogWarning("⚠️ Pago rechazado - TransactionId: {TransactionId}, Detalle: {Detail}",
+                            transaction.TransactionId, transaction.StatusDetail);
                         break;
+
                     case "pending":
-                        if (transaction.Sale != null) transaction.Sale.PaymentStatus = 0;
+                        if (transaction.Sale != null)
+                        {
+                            transaction.Sale.PaymentStatus = 0; // Pendiente
+                        }
+                        _logger.LogInformation("⏳ Pago pendiente - TransactionId: {TransactionId}", transaction.TransactionId);
                         break;
                 }
 
                 await _context.SaveChangesAsync(cancellationToken);
 
-                return Ok(new { received = true });
+                _logger.LogInformation("💾 Estado actualizado de {OldStatus} a {NewStatus} - TransactionId: {TransactionId}",
+                    oldStatus, transaction.Status, transaction.TransactionId);
+
+                return Ok(new { received = true, status = transaction.Status });
             }
             catch (Exception ex)
             {
@@ -274,54 +182,28 @@ namespace ForrajeriaJovitaAPI.Controllers
         }
 
         /// <summary>
-        /// Verificar el estado de un pago (local + consulta remota si está configurado)
-        /// GET: api/payway/payment-status/{transactionId}
+        /// Consultar estado de un pago
+        /// GET: api/Payway/payment-status/{transactionId}
         /// </summary>
         [HttpGet("payment-status/{transactionId}")]
-        public async Task<IActionResult> GetPaymentStatus(string transactionId, CancellationToken cancellationToken)
+        public async Task<IActionResult> GetPaymentStatus(
+            string transactionId,
+            CancellationToken cancellationToken)
         {
             try
             {
+                if (string.IsNullOrEmpty(transactionId))
+                {
+                    return BadRequest(new { error = "TransactionId es requerido" });
+                }
+
                 var transaction = await _context.PaymentTransactions
                     .Include(t => t.Sale)
                     .FirstOrDefaultAsync(t => t.TransactionId == transactionId, cancellationToken);
 
                 if (transaction == null)
-                    return NotFound(new { error = "Transacción no encontrada" });
-
-                var publicKey = _configuration["Payway:PublicKey"];
-                var apiUrl = _configuration["Payway:ApiUrl"]?.TrimEnd('/');
-
-                if (!string.IsNullOrEmpty(publicKey) && !string.IsNullOrEmpty(apiUrl))
                 {
-                    try
-                    {
-                        var http = _httpFactory.CreateClient();
-                        http.Timeout = TimeSpan.FromSeconds(15);
-                        http.DefaultRequestHeaders.Remove("X-API-KEY");
-                        http.DefaultRequestHeaders.Add("X-API-KEY", publicKey);
-
-                        var response = await http.GetAsync($"{apiUrl}/v1/payments/{transactionId}", cancellationToken);
-
-                        if (response.IsSuccessStatusCode)
-                        {
-                            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
-                            var payment = JsonSerializer.Deserialize<PaywayPaymentStatus>(responseBody,
-                                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-
-                            if (payment?.Status != null && payment.Status != transaction.Status)
-                            {
-                                transaction.Status = payment.Status;
-                                transaction.StatusDetail = payment.StatusDetail;
-                                transaction.UpdatedAt = DateTime.UtcNow;
-                                await _context.SaveChangesAsync(cancellationToken);
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning("⚠️ No se pudo verificar con Payway: {Error}", ex.Message);
-                    }
+                    return NotFound(new { error = "Transacción no encontrada" });
                 }
 
                 return Ok(new
@@ -329,39 +211,20 @@ namespace ForrajeriaJovitaAPI.Controllers
                     Status = transaction.Status,
                     StatusDetail = transaction.StatusDetail,
                     Amount = transaction.Amount,
+                    Currency = transaction.Currency,
                     TransactionId = transaction.TransactionId,
+                    CheckoutId = transaction.CheckoutId,
                     SaleId = transaction.SaleId,
                     CreatedAt = transaction.CreatedAt,
+                    UpdatedAt = transaction.UpdatedAt,
                     CompletedAt = transaction.CompletedAt
                 });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error al consultar estado");
+                _logger.LogError(ex, "❌ Error al consultar estado de pago");
                 return StatusCode(500, new { error = ex.Message });
             }
         }
-
-        #region Helpers
-
-        private static string ComputeMd5Hex(string input)
-        {
-            using var md5 = MD5.Create();
-            var inputBytes = Encoding.UTF8.GetBytes(input);
-            var hash = md5.ComputeHash(inputBytes);
-            return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
-        }
-
-        private static string ComputeHmacSha256Hex(string input, string key)
-        {
-            var keyBytes = Encoding.UTF8.GetBytes(key);
-            using var hmac = new HMACSHA256(keyBytes);
-            var inputBytes = Encoding.UTF8.GetBytes(input);
-            var hash = hmac.ComputeHash(inputBytes);
-            return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
-        }
-
-        #endregion
     }
 }
-    
