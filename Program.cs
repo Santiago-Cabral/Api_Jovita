@@ -6,25 +6,18 @@ using ForrajeriaJovitaAPI.Services;
 using ForrajeriaJovitaAPI.Services.Interfaces;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // ============================================================
-// LOGGING CONFIGURATION
+// LOGGING
 // ============================================================
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Logging.AddDebug();
 builder.Logging.SetMinimumLevel(LogLevel.Information);
-
-// ============================================================
-// CONFIGURATION / SETTINGS BINDING
-// ============================================================
-// Bind Payway settings to a strongly-typed POCO (see Settings/PaywaySettings.cs)
-builder.Services.Configure<PaywaySettings>(builder.Configuration.GetSection("Payway"));
 
 // ============================================================
 // DATABASE
@@ -33,40 +26,49 @@ builder.Services.AddDbContext<ForrajeriaContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 // ============================================================
-// HTTP CLIENT (Para Payway y otras integraciones)
-// - Se registran HttpClientFactory y un cliente nombrado para Payway si lo deseas
+// HTTP CLIENTS
 // ============================================================
-builder.Services.AddHttpClient(); // IHttpClientFactory disponible para inyectar
+builder.Services.AddHttpClient();
 
-// (Opcional) Cliente nombrado para Payway: inyectable con IHttpClientFactory.CreateClient("payway")
 builder.Services.AddHttpClient("payway", client =>
 {
     var apiUrl = builder.Configuration["Payway:ApiUrl"];
-    if (!string.IsNullOrEmpty(apiUrl))
-    {
+    if (!string.IsNullOrWhiteSpace(apiUrl))
         client.BaseAddress = new Uri(apiUrl.TrimEnd('/'));
-    }
+
     client.Timeout = TimeSpan.FromSeconds(30);
 });
 
 // ============================================================
-// JWT SETTINGS
+// JWT CONFIG (SIN SETTINGS EXTRA)
 // ============================================================
-var jwtSettings = new JwtSettings
-{
-    Key = builder.Configuration["Jwt:Key"] ?? throw new Exception("Jwt:Key no configurado"),
-    Issuer = builder.Configuration["Jwt:Issuer"] ?? throw new Exception("Jwt:Issuer no configurado"),
-    Audience = builder.Configuration["Jwt:Audience"] ?? throw new Exception("Jwt:Audience no configurado"),
-    ExpiresMinutes = string.IsNullOrEmpty(builder.Configuration["Jwt:ExpiresMinutes"])
-        ? 60
-        : int.Parse(builder.Configuration["Jwt:ExpiresMinutes"]!)
-};
-builder.Services.AddSingleton(jwtSettings);
+var jwtKey = builder.Configuration["Jwt:Key"] ?? throw new Exception("Jwt:Key no configurado");
+var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? throw new Exception("Jwt:Issuer no configurado");
+var jwtAudience = builder.Configuration["Jwt:Audience"] ?? throw new Exception("Jwt:Audience no configurado");
+
+var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.RequireHttpsMetadata = false;
+        options.SaveToken = true;
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateIssuerSigningKey = true,
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.Zero,
+            ValidIssuer = jwtIssuer,
+            ValidAudience = jwtAudience,
+            IssuerSigningKey = signingKey
+        };
+    });
 
 // ============================================================
-// SERVICES (DEPENDENCY INJECTION)
+// SERVICES (DI)
 // ============================================================
-// Seguridad / Auth / Aplicación
 builder.Services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();
 builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
 
@@ -78,11 +80,10 @@ builder.Services.AddScoped<IBranchService, BranchService>();
 builder.Services.AddScoped<ICategoryService, CategoryService>();
 builder.Services.AddScoped<IClientAccountService, ClientAccountService>();
 
-// Servicios de negocio
 builder.Services.AddScoped<IVentaService, VentaService>();
 builder.Services.AddScoped<ICheckoutService, CheckoutService>();
 
-// Payway service (integration)
+// Payway
 builder.Services.AddScoped<IPaywayService, PaywayService>();
 
 // ============================================================
@@ -92,12 +93,12 @@ builder.Services.AddControllers()
     .AddJsonOptions(o =>
     {
         o.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+        o.JsonSerializerOptions.PropertyNamingPolicy = null;
         o.JsonSerializerOptions.WriteIndented = true;
-        o.JsonSerializerOptions.PropertyNamingPolicy = null; // Mantener PascalCase si lo prefieres
     });
 
 // ============================================================
-// CORS - PRODUCCIÓN (solo frontends válidos)
+// CORS
 // ============================================================
 builder.Services.AddCors(options =>
 {
@@ -105,9 +106,9 @@ builder.Services.AddCors(options =>
     {
         policy
             .WithOrigins(
-                "http://localhost:5173",                 // Dev local
-                "http://localhost:3000",                 // Otro dev
-                "https://forrajeria-jovita.vercel.app"   // Frontend en producción
+                "http://localhost:5173",
+                "http://localhost:3000",
+                "https://forrajeria-jovita.vercel.app"
             )
             .AllowAnyHeader()
             .AllowAnyMethod()
@@ -116,56 +117,36 @@ builder.Services.AddCors(options =>
 });
 
 // ============================================================
-// AUTHENTICATION (JWT)
-// ============================================================
-var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.Key));
-
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
-    {
-        options.RequireHttpsMetadata = false;
-        options.SaveToken = true;
-
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidateAudience = true,
-            ValidateIssuerSigningKey = true,
-            ValidateLifetime = true,
-            ClockSkew = TimeSpan.Zero,
-            ValidIssuer = jwtSettings.Issuer,
-            ValidAudience = jwtSettings.Audience,
-            IssuerSigningKey = signingKey
-        };
-    });
-
-// ============================================================
-// SWAGGER (añadir seguridad básica para testing si quieres)
+// SWAGGER
 // ============================================================
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
-    c.SwaggerDoc("v1", new OpenApiInfo { Title = "ForrajeriaJovitaAPI", Version = "v1" });
-
-    // Opcional: agregar esquema de seguridad para JWT (para probar desde Swagger)
-    var jwtSecurityScheme = new OpenApiSecurityScheme
+    c.SwaggerDoc("v1", new OpenApiInfo
     {
+        Title = "ForrajeriaJovitaAPI",
+        Version = "v1"
+    });
+
+    var jwtScheme = new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = SecuritySchemeType.Http,
         Scheme = "bearer",
         BearerFormat = "JWT",
-        Name = "Authorization",
         In = ParameterLocation.Header,
-        Type = SecuritySchemeType.Http,
-        Description = "Bearer JWT Authorization header",
+        Description = "Bearer token",
         Reference = new OpenApiReference
         {
-            Id = JwtBearerDefaults.AuthenticationScheme,
-            Type = ReferenceType.SecurityScheme
+            Type = ReferenceType.SecurityScheme,
+            Id = JwtBearerDefaults.AuthenticationScheme
         }
     };
-    c.AddSecurityDefinition(jwtSecurityScheme.Reference.Id, jwtSecurityScheme);
+
+    c.AddSecurityDefinition(jwtScheme.Reference.Id, jwtScheme);
     c.AddSecurityRequirement(new OpenApiSecurityRequirement
     {
-        { jwtSecurityScheme, Array.Empty<string>() }
+        { jwtScheme, Array.Empty<string>() }
     });
 });
 
@@ -176,46 +157,26 @@ var app = builder.Build();
 // ============================================================
 app.UseHttpsRedirection();
 
-// 1. Routing
 app.UseRouting();
-
-// 2. CORS (DESPUÉS de Routing, ANTES de Auth)
 app.UseCors("AllowFrontend");
 
-// 3. Auth
 app.UseAuthentication();
 app.UseAuthorization();
 
-// 4. Swagger
 app.UseSwagger();
 app.UseSwaggerUI();
 
-// 5. Controllers
 app.MapControllers();
 
-// 6. Health check
-app.MapGet("/api/health", () =>
+app.MapGet("/api/health", () => Results.Ok(new
 {
-    return Results.Json(new
-    {
-        status = "OK",
-        message = "Forrajeria Jovita API online",
-        time = DateTime.UtcNow,
-        environment = app.Environment.EnvironmentName
-    });
-});
+    status = "OK",
+    service = "Forrajeria Jovita API",
+    time = DateTime.UtcNow
+}));
 
-// Log startup info
 var logger = app.Services.GetRequiredService<ILogger<Program>>();
-logger.LogInformation("🚀 Forrajeria Jovita API iniciada");
-logger.LogInformation("Environment: {Environment}", app.Environment.EnvironmentName);
-logger.LogInformation("CORS habilitado para: http://localhost:5173, https://forrajeria-jovita.vercel.app");
-
-// Si quieres ejecutar migraciones automáticas en startup (opcional, manejar con cuidado en prod)
-// using (var scope = app.Services.CreateScope())
-// {
-//     var db = scope.ServiceProvider.GetRequiredService<ForrajeriaContext>();
-//     db.Database.Migrate();
-// }
+logger.LogInformation("🚀 API Forrajeria Jovita iniciada");
+logger.LogInformation("Environment: {Env}", app.Environment.EnvironmentName);
 
 app.Run();
