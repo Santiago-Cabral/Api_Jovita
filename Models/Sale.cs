@@ -27,8 +27,8 @@ namespace ForrajeriaJovitaAPI.Models
         public decimal? DeliveryCost { get; set; }
         public string? DeliveryNote { get; set; }
 
-        // 🔧 FIX: Cambiar de int a decimal para coincidir con la base de datos
-        public decimal PaymentStatus { get; set; }
+        // 🔧 FIX: Mantener como INT para coincidir con la base de datos
+        public int PaymentStatus { get; set; }
 
         public DateTime CreationDate { get; set; } = DateTime.Now;
 
