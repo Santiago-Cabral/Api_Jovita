@@ -1,19 +1,21 @@
+using System;
+
 namespace ForrajeriaJovitaAPI.DTOs.Checkout
 {
     public class CheckoutResponseDto
     {
-        public bool Success { get; set; }
-        public string Message { get; set; }
+        public int SaleId { get; set; }
 
-        // Venta / Checkout
-        public int? VentaId { get; set; }
-        public decimal? Total { get; set; }
+        public decimal Subtotal { get; set; }
 
-        // Payway
-        public bool RequiresPayment { get; set; }
-        public string? PaywayRedirectUrl { get; set; }
+        public decimal DiscountTotal { get; set; }
 
-        // Para errores externos
-        public string? ErrorCode { get; set; }
+        public DateTime SoldAt { get; set; }
+
+        public bool StockActualizado { get; set; }
+
+        public string? TicketUrl { get; set; }
+
+        public string Message { get; set; } = string.Empty;
     }
 }
