@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace ForrajeriaJovitaAPI.Models
 {
@@ -15,8 +16,14 @@ namespace ForrajeriaJovitaAPI.Models
         public Product? Product { get; set; }
 
         // Cantidad / precio / descuento
-        public int Quantity { get; set; }
+        // DB: decimal(18,2) -> C#: decimal
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal Quantity { get; set; }
+
+        [Column(TypeName = "decimal(18,2)")]
         public decimal UnitPrice { get; set; }
+
+        [Column(TypeName = "decimal(18,2)")]
         public decimal Discount { get; set; }
 
         // --- Nuevos campos que tu código espera ---
@@ -25,11 +32,13 @@ namespace ForrajeriaJovitaAPI.Models
         public ProductUnit? ProductUnit { get; set; }
 
         // Nombre de sucursal/branch (si tu CheckoutService arma un campo para mostrar)
-        // Si prefieres evitar persistir este campo, hacelo nullable; mantenerlo facilita compilación.
         public string? BranchName { get; set; }
 
-        // Conversiones/stock
+        // Conversiones/stock (DB decimal(18,2))
+        [Column(TypeName = "decimal(18,2)")]
         public decimal ConversionToBase { get; set; } = 1m;
+
+        [Column(TypeName = "decimal(18,2)")]
         public decimal DeductedBaseQuantity { get; set; } = 0m;
 
         public DateTime CreationDate { get; set; } = DateTime.Now;
