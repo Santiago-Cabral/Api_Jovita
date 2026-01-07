@@ -63,8 +63,8 @@ namespace ForrajeriaJovitaAPI.Services
                 if (existingClient != null)
                 {
                     clientId = existingClient.Id;
-                    existingClient.FullName = request.Client.FullName;
-                    existingClient.Phone = request.Client.Phone;
+                    existingClient.FullName = request.Client.FullName ?? existingClient.FullName;
+                    existingClient.Phone = request.Client.Phone ?? existingClient.Phone;
                     _context.Clients.Update(existingClient);
                     await _context.SaveChangesAsync();
                 }
@@ -209,7 +209,7 @@ namespace ForrajeriaJovitaAPI.Services
                 throw;
             }
 
-            string paywayRedirectUrl = null;
+            string? paywayRedirectUrl = null;
             try
             {
                 var customerEmail = "cliente@temp.com";
@@ -228,6 +228,7 @@ namespace ForrajeriaJovitaAPI.Services
 
                 var frontendUrl = _config["Frontend:Url"] ?? "https://forrajeria-jovita.vercel.app";
 
+                // FIX: Usar el ID de venta en lugar del TransactionId que aún no existe
                 var paywayResult = await _paywayService.CreatePaymentAsync(new PaywayCheckoutRequest
                 {
                     SaleId = sale.Id,
@@ -239,8 +240,8 @@ namespace ForrajeriaJovitaAPI.Services
                         Email = customerEmail,
                         Phone = customerPhone
                     },
-                    ReturnUrl = $"{frontendUrl}/pago-exitoso?txId={paywayResult.TransactionId}",
-                    CancelUrl = $"{frontendUrl}/pago-cancelado?txId={paywayResult.TransactionId}"
+                    ReturnUrl = $"{frontendUrl}/pago-exitoso?saleId={sale.Id}",
+                    CancelUrl = $"{frontendUrl}/pago-cancelado?saleId={sale.Id}"
                 });
 
                 paywayRedirectUrl = paywayResult.CheckoutUrl;
