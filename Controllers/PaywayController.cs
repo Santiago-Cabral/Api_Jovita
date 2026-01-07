@@ -1,5 +1,4 @@
-﻿// Controllers/PaywayController.cs
-using System;
+﻿using System;
 using System.IO;
 using System.Text;
 using System.Text.Json;
@@ -33,76 +32,11 @@ namespace ForrajeriaJovitaAPI.Controllers
             _context = context;
         }
 
-        /// <summary>
-        /// Crear checkout en Payway Ventas Online (Forms)
-        /// POST: api/Payway/create-checkout
-        /// </summary>
-        [HttpPost("create-checkout")]
-        public async Task<IActionResult> CreateCheckout(
-            [FromBody] PaywayCheckoutRequest request,
-            CancellationToken cancellationToken)
-        {
-            try
-            {
-                _logger.LogInformation("📤 Iniciando checkout Payway para Sale ID: {SaleId}", request.SaleId);
-
-                // Validaciones básicas
-                if (request.SaleId <= 0 || request.Amount <= 0)
-                {
-                    return BadRequest(new { error = "SaleId y Amount son requeridos y deben ser mayores a 0" });
-                }
-
-                if (string.IsNullOrEmpty(request.Customer?.Email))
-                {
-                    return BadRequest(new { error = "Email del cliente es requerido" });
-                }
-
-                // Crear checkout en Payway
-                var result = await _paywayService.CreatePaymentAsync(request);
-
-                // Guardar transacción en base de datos
-                var transaction = new PaymentTransaction
-                {
-                    SaleId = request.SaleId,
-                    TransactionId = result.TransactionId,
-                    CheckoutId = result.CheckoutId,
-                    Status = "pending",
-                    Amount = request.Amount,
-                    Currency = "ARS",
-                    PaymentMethod = "card",
-                    CreatedAt = DateTime.UtcNow
-                };
-
-                _context.PaymentTransactions.Add(transaction);
-                await _context.SaveChangesAsync(cancellationToken);
-
-                _logger.LogInformation("✅ Checkout creado - TransactionId: {TransactionId}, URL: {CheckoutUrl}",
-                    result.TransactionId, result.CheckoutUrl);
-
-                return Ok(result);
-            }
-            catch (InvalidOperationException ex)
-            {
-                _logger.LogError(ex, "❌ Error de configuración");
-                return StatusCode(500, new { error = "Error de configuración del servidor", message = ex.Message });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "❌ Error al crear checkout");
-                return StatusCode(500, new { error = "Error al procesar el pago", message = ex.Message });
-            }
-        }
-
-        /// <summary>
-        /// Webhook para notificaciones de Payway
-        /// POST: api/Payway/webhook
-        /// </summary>
         [HttpPost("webhook")]
         public async Task<IActionResult> Webhook(CancellationToken cancellationToken)
         {
             try
             {
-                // Leer el body raw
                 Request.EnableBuffering();
                 using var reader = new StreamReader(Request.Body, Encoding.UTF8, leaveOpen: true);
                 var body = await reader.ReadToEndAsync();
@@ -110,9 +44,17 @@ namespace ForrajeriaJovitaAPI.Controllers
 
                 _logger.LogInformation("🔔 Webhook recibido de Payway: {Body}", body);
 
-                // Parsear notificación
-                var notification = JsonSerializer.Deserialize<PaywayWebhookNotification>(body,
-                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                PaywayWebhookNotification? notification;
+                try
+                {
+                    notification = JsonSerializer.Deserialize<PaywayWebhookNotification>(body,
+                        new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                }
+                catch (JsonException ex)
+                {
+                    _logger.LogError(ex, "❌ Error al parsear webhook JSON");
+                    return BadRequest(new { error = "JSON inválido" });
+                }
 
                 if (notification == null || string.IsNullOrEmpty(notification.SiteTransactionId))
                 {
@@ -120,7 +62,6 @@ namespace ForrajeriaJovitaAPI.Controllers
                     return BadRequest(new { error = "Payload inválido" });
                 }
 
-                // Buscar transacción
                 var transaction = await _context.PaymentTransactions
                     .Include(t => t.Sale)
                     .FirstOrDefaultAsync(t => t.TransactionId == notification.SiteTransactionId, cancellationToken);
@@ -131,28 +72,33 @@ namespace ForrajeriaJovitaAPI.Controllers
                     return NotFound(new { error = "Transacción no encontrada" });
                 }
 
-                // Actualizar estado
+                if (transaction.Status == "approved" && notification.Status?.ToLower() == "approved")
+                {
+                    _logger.LogInformation("ℹ️ Transacción ya estaba aprobada, ignorando notificación duplicada");
+                    return Ok(new { received = true, status = "already_processed" });
+                }
+
                 var oldStatus = transaction.Status;
                 transaction.Status = notification.Status?.ToLower() ?? transaction.Status;
                 transaction.StatusDetail = notification.StatusDetail;
                 transaction.UpdatedAt = DateTime.UtcNow;
 
-                // Actualizar estado de la venta según el resultado
                 switch (transaction.Status)
                 {
                     case "approved":
                         transaction.CompletedAt = DateTime.UtcNow;
                         if (transaction.Sale != null)
                         {
-                            transaction.Sale.PaymentStatus = 1; // Aprobado
+                            transaction.Sale.PaymentStatus = 1;
                         }
-                        _logger.LogInformation("✅ Pago aprobado - TransactionId: {TransactionId}", transaction.TransactionId);
+                        _logger.LogInformation("✅ Pago aprobado - TransactionId: {TransactionId}, SaleId: {SaleId}",
+                            transaction.TransactionId, transaction.SaleId);
                         break;
 
                     case "rejected":
                         if (transaction.Sale != null)
                         {
-                            transaction.Sale.PaymentStatus = 2; // Rechazado
+                            transaction.Sale.PaymentStatus = 2;
                         }
                         _logger.LogWarning("⚠️ Pago rechazado - TransactionId: {TransactionId}, Detalle: {Detail}",
                             transaction.TransactionId, transaction.StatusDetail);
@@ -161,9 +107,13 @@ namespace ForrajeriaJovitaAPI.Controllers
                     case "pending":
                         if (transaction.Sale != null)
                         {
-                            transaction.Sale.PaymentStatus = 0; // Pendiente
+                            transaction.Sale.PaymentStatus = 0;
                         }
                         _logger.LogInformation("⏳ Pago pendiente - TransactionId: {TransactionId}", transaction.TransactionId);
+                        break;
+
+                    default:
+                        _logger.LogWarning("⚠️ Estado desconocido: {Status}", transaction.Status);
                         break;
                 }
 
@@ -181,10 +131,6 @@ namespace ForrajeriaJovitaAPI.Controllers
             }
         }
 
-        /// <summary>
-        /// Consultar estado de un pago
-        /// GET: api/Payway/payment-status/{transactionId}
-        /// </summary>
         [HttpGet("payment-status/{transactionId}")]
         public async Task<IActionResult> GetPaymentStatus(
             string transactionId,
@@ -225,6 +171,17 @@ namespace ForrajeriaJovitaAPI.Controllers
                 _logger.LogError(ex, "❌ Error al consultar estado de pago");
                 return StatusCode(500, new { error = ex.Message });
             }
+        }
+
+        [HttpGet("health")]
+        public IActionResult HealthCheck()
+        {
+            return Ok(new
+            {
+                status = "healthy",
+                service = "payway",
+                timestamp = DateTime.UtcNow
+            });
         }
     }
 }

@@ -11,39 +11,23 @@ using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ============================================================
-// LOGGING
-// ============================================================
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Logging.AddDebug();
 builder.Logging.SetMinimumLevel(LogLevel.Information);
 
-// ============================================================
-// DATABASE
-// ============================================================
 builder.Services.AddDbContext<ForrajeriaContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// ============================================================
-// HTTP CLIENTS
-// ============================================================
 builder.Services.AddHttpClient();
 
-// Cliente HTTP nombrado para Payway con BaseAddress configurada
 builder.Services.AddHttpClient("payway", client =>
 {
-    var apiUrl = builder.Configuration["Payway:ApiUrl"];
-    if (!string.IsNullOrWhiteSpace(apiUrl))
-    {
-        client.BaseAddress = new Uri(apiUrl.TrimEnd('/'));
-    }
+    var baseUrl = builder.Configuration["Payway:BaseUrl"] ?? "https://api.decidir.com";
+    client.BaseAddress = new Uri(baseUrl);
     client.Timeout = TimeSpan.FromSeconds(30);
 });
 
-// ============================================================
-// JWT CONFIG
-// ============================================================
 var jwtKey = builder.Configuration["Jwt:Key"] ?? throw new Exception("Jwt:Key no configurado");
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? throw new Exception("Jwt:Issuer no configurado");
 var jwtAudience = builder.Configuration["Jwt:Audience"] ?? throw new Exception("Jwt:Audience no configurado");
@@ -68,9 +52,6 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
-// ============================================================
-// SERVICES (DI)
-// ============================================================
 builder.Services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();
 builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
 
@@ -83,13 +64,8 @@ builder.Services.AddScoped<ICategoryService, CategoryService>();
 builder.Services.AddScoped<IClientAccountService, ClientAccountService>();
 builder.Services.AddScoped<IVentaService, VentaService>();
 builder.Services.AddScoped<ICheckoutService, CheckoutService>();
-
-// ✅ Servicio de Payway
 builder.Services.AddScoped<IPaywayService, PaywayService>();
 
-// ============================================================
-// CONTROLLERS / JSON
-// ============================================================
 builder.Services.AddControllers()
     .AddJsonOptions(o =>
     {
@@ -98,9 +74,6 @@ builder.Services.AddControllers()
         o.JsonSerializerOptions.WriteIndented = true;
     });
 
-// ============================================================
-// CORS
-// ============================================================
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
@@ -117,9 +90,6 @@ builder.Services.AddCors(options =>
     });
 });
 
-// ============================================================
-// SWAGGER
-// ============================================================
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -154,9 +124,6 @@ builder.Services.AddSwaggerGen(c =>
 
 var app = builder.Build();
 
-// ============================================================
-// PIPELINE
-// ============================================================
 app.UseHttpsRedirection();
 app.UseRouting();
 app.UseCors("AllowFrontend");
@@ -173,7 +140,6 @@ app.UseSwaggerUI(c =>
 
 app.MapControllers();
 
-// Health check endpoint
 app.MapGet("/api/health", () => Results.Ok(new
 {
     status = "OK",
@@ -187,6 +153,6 @@ var logger = app.Services.GetRequiredService<ILogger<Program>>();
 logger.LogInformation("🚀 API Forrajeria Jovita iniciada");
 logger.LogInformation("📍 Environment: {Env}", app.Environment.EnvironmentName);
 logger.LogInformation("🌐 CORS habilitado para: localhost:5173, localhost:3000, forrajeria-jovita.vercel.app");
-logger.LogInformation("💳 Payway configurado en: {PaywayUrl}", builder.Configuration["Payway:ApiUrl"]);
+logger.LogInformation("💳 Payway configurado en: {PaywayUrl}", builder.Configuration["Payway:BaseUrl"]);
 
 app.Run();

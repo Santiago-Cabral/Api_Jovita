@@ -3,6 +3,6 @@ namespace ForrajeriaJovitaAPI.DTOs.Checkout
     public class CheckoutStockDto
     {
         public int ProductId { get; set; }
-        public decimal Stock { get; set; }
+        public int Stock { get; set; }
     }
 }

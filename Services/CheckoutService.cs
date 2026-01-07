@@ -46,7 +46,6 @@ namespace ForrajeriaJovitaAPI.Services
             if (totalPagos != request.Total)
                 throw new ArgumentException("La suma de los pagos no coincide con el total.");
 
-            // Sesión de caja abierta
             var cashSession = await _context.CashSessions
                 .Where(c => c.BranchId == OnlineBranchId && !c.IsClosed)
                 .OrderByDescending(c => c.OpenedAt)
@@ -55,7 +54,6 @@ namespace ForrajeriaJovitaAPI.Services
             if (cashSession == null)
                 throw new InvalidOperationException("No hay sesión de caja abierta.");
 
-            // CLIENTE (opcional)
             int? clientId = null;
             if (request.Client != null && !string.IsNullOrWhiteSpace(request.Client.Document))
             {
@@ -88,7 +86,6 @@ namespace ForrajeriaJovitaAPI.Services
                 }
             }
 
-            // PRODUCTOS
             var productIds = request.Items.Select(i => i.ProductId).Distinct().ToList();
 
             var products = await _context.Products
@@ -98,22 +95,18 @@ namespace ForrajeriaJovitaAPI.Services
             if (products.Count != productIds.Count)
                 throw new InvalidOperationException("Un producto no existe o está inactivo.");
 
-            // STOCKS
             var stocks = await _context.ProductsStocks
                 .Where(s => productIds.Contains(s.ProductId) && s.BranchId == OnlineBranchId)
                 .ToListAsync();
 
-            // CÁLCULOS
             decimal subtotal = 0m;
             decimal discountTotal = 0m;
 
-            // Validaciones y cálculo del subtotal usando cantidades enteras
             foreach (var item in request.Items)
             {
                 if (item.Quantity <= 0)
                     throw new InvalidOperationException($"Cantidad inválida en producto ID {item.ProductId}");
 
-                // Aceptar solo cantidades enteras
                 if (Math.Abs(item.Quantity - Math.Truncate(item.Quantity)) > 0)
                     throw new InvalidOperationException($"Cantidad no entera para producto ID {item.ProductId}. Debe ser un número entero.");
 
@@ -134,12 +127,10 @@ namespace ForrajeriaJovitaAPI.Services
             if (request.Total < totalCalculado)
                 throw new InvalidOperationException("El total enviado es menor al calculado.");
 
-            // Crear venta + descontar stock + pagos en transacción DB
             using var transaction = await _context.Database.BeginTransactionAsync();
             Sale sale;
             try
             {
-                // MOVIMIENTO DE CAJA
                 var cashMovement = new CashMovement
                 {
                     CashSessionId = cashSession.Id,
@@ -152,7 +143,6 @@ namespace ForrajeriaJovitaAPI.Services
                 _context.CashMovements.Add(cashMovement);
                 await _context.SaveChangesAsync();
 
-                // VENTA
                 sale = new Sale
                 {
                     CashMovementId = cashMovement.Id,
@@ -161,6 +151,7 @@ namespace ForrajeriaJovitaAPI.Services
                     Subtotal = subtotal,
                     DiscountTotal = discountTotal,
                     Total = request.Total,
+                    PaymentStatus = 0,
                     CreationDate = DateTime.UtcNow
                 };
 
@@ -170,7 +161,6 @@ namespace ForrajeriaJovitaAPI.Services
                 _context.Sales.Add(sale);
                 await _context.SaveChangesAsync();
 
-                // ITEMS + STOCK
                 foreach (var item in request.Items)
                 {
                     var product = products.First(p => p.Id == item.ProductId);
@@ -198,7 +188,6 @@ namespace ForrajeriaJovitaAPI.Services
 
                 await _context.SaveChangesAsync();
 
-                // PAGOS
                 foreach (var p in request.Payments)
                 {
                     _context.SalesPayments.Add(new SalePayment
@@ -220,11 +209,9 @@ namespace ForrajeriaJovitaAPI.Services
                 throw;
             }
 
-            // ✅ CREAR CHECKOUT EN PAYWAY (CORREGIDO)
             string paywayRedirectUrl = null;
             try
             {
-                // Obtener email del cliente
                 var customerEmail = "cliente@temp.com";
                 var customerName = "Cliente";
                 var customerPhone = "";
@@ -236,14 +223,11 @@ namespace ForrajeriaJovitaAPI.Services
                     {
                         customerName = client.FullName ?? "Cliente";
                         customerPhone = client.Phone ?? "";
-                        // Si tenés un campo Email en Client, usalo aquí
-                        // customerEmail = client.Email ?? customerEmail;
                     }
                 }
 
                 var frontendUrl = _config["Frontend:Url"] ?? "https://forrajeria-jovita.vercel.app";
 
-                // ✅ LLAMADA CORRECTA AL NUEVO PaywayService
                 var paywayResult = await _paywayService.CreatePaymentAsync(new PaywayCheckoutRequest
                 {
                     SaleId = sale.Id,
@@ -255,13 +239,12 @@ namespace ForrajeriaJovitaAPI.Services
                         Email = customerEmail,
                         Phone = customerPhone
                     },
-                    ReturnUrl = $"{frontendUrl}/pago-exitoso",
-                    CancelUrl = $"{frontendUrl}/pago-cancelado"
+                    ReturnUrl = $"{frontendUrl}/pago-exitoso?txId={paywayResult.TransactionId}",
+                    CancelUrl = $"{frontendUrl}/pago-cancelado?txId={paywayResult.TransactionId}"
                 });
 
                 paywayRedirectUrl = paywayResult.CheckoutUrl;
 
-                // Guardar PaymentTransaction
                 try
                 {
                     var paymentTransaction = new PaymentTransaction
@@ -293,7 +276,6 @@ namespace ForrajeriaJovitaAPI.Services
                 throw new InvalidOperationException("Error al crear el checkout en Payway. Intente nuevamente.", ex);
             }
 
-            // Devolver DTO con la URL lista para redirigir
             return new CheckoutResponseDto
             {
                 SaleId = sale.Id,

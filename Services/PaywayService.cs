@@ -1,5 +1,4 @@
-﻿// Services/PaywayService.cs
-using System;
+﻿using System;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
@@ -16,7 +15,9 @@ namespace ForrajeriaJovitaAPI.Services
         private readonly IConfiguration _configuration;
         private readonly ILogger<PaywayService> _logger;
         private readonly string _privateKey;
+        private readonly string _publicKey;
         private readonly string _siteId;
+        private readonly bool _isSandbox;
 
         public PaywayService(
             IHttpClientFactory httpClientFactory,
@@ -27,27 +28,29 @@ namespace ForrajeriaJovitaAPI.Services
             _configuration = configuration;
             _logger = logger;
 
-            // Leer credenciales (desde User Secrets en desarrollo)
             _privateKey = configuration["Payway:PrivateKey"]
                 ?? throw new InvalidOperationException("Payway:PrivateKey no configurado");
+            _publicKey = configuration["Payway:PublicKey"]
+                ?? throw new InvalidOperationException("Payway:PublicKey no configurado");
             _siteId = configuration["Payway:SiteId"]
                 ?? throw new InvalidOperationException("Payway:SiteId no configurado");
+            _isSandbox = configuration.GetValue<bool>("Payway:IsSandbox", true);
         }
 
         public async Task<PaywayCheckoutResponse> CreatePaymentAsync(PaywayCheckoutRequest request)
         {
             try
             {
-                _logger.LogInformation("🔵 Creando pago Payway Forms - Amount: {Amount}, Email: {Email}",
-                    request.Amount, request.Customer?.Email);
+                _logger.LogInformation("🔵 Creando pago Payway Forms - Amount: {Amount}, SaleId: {SaleId}",
+                    request.Amount, request.SaleId);
 
-                // Generar ID de transacción único
                 var transactionId = $"JOV_{DateTime.Now:yyyyMMddHHmmss}_{request.SaleId}";
 
-                // Payload para Payway Ventas Online (Forms)
                 var payload = new
                 {
-                    amount = (int)(request.Amount * 100), // Convertir a centavos
+                    site_id = _siteId,
+                    site_transaction_id = transactionId,
+                    amount = (int)(request.Amount * 100),
                     currency = "ARS",
                     description = request.Description ?? $"Pedido #{request.SaleId} - Forrajería Jovita",
                     customer = new
@@ -55,8 +58,6 @@ namespace ForrajeriaJovitaAPI.Services
                         email = request.Customer?.Email ?? "cliente@temp.com",
                         name = request.Customer?.Name ?? "Cliente"
                     },
-                    site_id = _siteId,
-                    site_transaction_id = transactionId,
                     payment_type = "single",
                     back_url = request.CancelUrl,
                     success_url = request.ReturnUrl,
@@ -65,7 +66,6 @@ namespace ForrajeriaJovitaAPI.Services
 
                 _logger.LogDebug("📤 Payload Payway: {Payload}", JsonSerializer.Serialize(payload));
 
-                // Configurar headers
                 _httpClient.DefaultRequestHeaders.Clear();
                 _httpClient.DefaultRequestHeaders.Add("x-api-key", _privateKey);
 
@@ -75,7 +75,6 @@ namespace ForrajeriaJovitaAPI.Services
                     "application/json"
                 );
 
-                // Llamar a Payway API
                 var response = await _httpClient.PostAsync("/v1.2/forms/validate", content);
                 var responseBody = await response.Content.ReadAsStringAsync();
 
@@ -88,7 +87,6 @@ namespace ForrajeriaJovitaAPI.Services
                     throw new Exception($"Error de Payway: {response.StatusCode} - {responseBody}");
                 }
 
-                // Parsear respuesta
                 var paywayResponse = JsonSerializer.Deserialize<PaywayFormsResponse>(responseBody,
                     new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
@@ -98,10 +96,14 @@ namespace ForrajeriaJovitaAPI.Services
                     throw new Exception("Payway no devolvió un hash válido");
                 }
 
-                // Construir URL del formulario
-                var checkoutUrl = $"https://api.decidir.com/web/form?hash={paywayResponse.Hash}";
+                var baseUrl = _isSandbox
+                    ? "https://forms.decidir.com"
+                    : "https://ventasonline.payway.com.ar";
 
-                _logger.LogInformation("✅ Checkout creado exitosamente - Hash: {Hash}", paywayResponse.Hash);
+                var checkoutUrl = $"{baseUrl}/web/forms/{paywayResponse.Hash}?apikey={_publicKey}";
+
+                _logger.LogInformation("✅ Checkout creado - Hash: {Hash}, URL: {Url}",
+                    paywayResponse.Hash, checkoutUrl);
 
                 return new PaywayCheckoutResponse
                 {
@@ -118,7 +120,6 @@ namespace ForrajeriaJovitaAPI.Services
         }
     }
 
-    // DTO interno para la respuesta de Payway Forms
     internal class PaywayFormsResponse
     {
         public string? Hash { get; set; }
