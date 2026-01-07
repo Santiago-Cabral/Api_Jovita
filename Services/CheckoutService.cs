@@ -228,7 +228,6 @@ namespace ForrajeriaJovitaAPI.Services
 
                 var frontendUrl = _config["Frontend:Url"] ?? "https://forrajeria-jovita.vercel.app";
 
-                // FIX: Usar el ID de venta en lugar del TransactionId que aún no existe
                 var paywayResult = await _paywayService.CreatePaymentAsync(new PaywayCheckoutRequest
                 {
                     SaleId = sale.Id,
@@ -254,7 +253,7 @@ namespace ForrajeriaJovitaAPI.Services
                         TransactionId = paywayResult.TransactionId,
                         CheckoutId = paywayResult.CheckoutId,
                         Status = "pending",
-                        Amount = sale.Total,
+                        Amount = (int)sale.Total, // FIX: Conversión explícita de decimal a int
                         Currency = "ARS",
                         PaymentMethod = "card",
                         CreatedAt = DateTime.UtcNow
