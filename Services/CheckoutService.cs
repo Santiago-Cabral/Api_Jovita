@@ -8,8 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using ForrajeriaJovitaAPI.DTOs.Checkout;
-using ForrajeriaJovitaAPI.DTOs.Payway;
-
+using ForrajeriaJovitaAPI.DTOs.Payway
 namespace ForrajeriaJovitaAPI.Services
 {
     public class CheckoutService : ICheckoutService
