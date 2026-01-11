@@ -253,7 +253,7 @@ namespace ForrajeriaJovitaAPI.Services
                         TransactionId = paywayResult.TransactionId,
                         CheckoutId = paywayResult.CheckoutId,
                         Status = "pending",
-                        Amount = (int)sale.Total, // FIX: Conversión explícita de decimal a int
+                        Amount = Convert.ToInt32(sale.Total),
                         Currency = "ARS",
                         PaymentMethod = "card",
                         CreatedAt = DateTime.UtcNow
