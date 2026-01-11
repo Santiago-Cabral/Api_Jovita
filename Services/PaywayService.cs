@@ -50,7 +50,7 @@ namespace ForrajeriaJovitaAPI.Services
                 {
                     site_id = _siteId,
                     site_transaction_id = transactionId,
-                    amount = (int)(request.Amount * 100),
+                    amount = (decimal)(request.Amount * 100),
                     currency = "ARS",
                     description = request.Description ?? $"Pedido #{request.SaleId} - Forrajería Jovita",
                     customer = new
