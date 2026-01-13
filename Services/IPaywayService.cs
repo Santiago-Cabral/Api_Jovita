@@ -1,8 +1,9 @@
+// Services/Interfaces/IPaywayService.cs
 using System.Threading;
 using System.Threading.Tasks;
 using ForrajeriaJovitaAPI.DTOs.Payway;
 
-namespace ForrajeriaJovitaAPI.Services
+namespace ForrajeriaJovitaAPI.Services.Interfaces
 {
     /// <summary>
     /// Servicio para integración con Payway (Decidir)
