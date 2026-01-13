@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using ForrajeriaJovitaAPI.DTOs.Payway;
-using ForrajeriaJovitaAPI.Services;
+using ForrajeriaJovitaAPI.Services.Interfaces;
 
 namespace ForrajeriaJovitaAPI.Services
 {
