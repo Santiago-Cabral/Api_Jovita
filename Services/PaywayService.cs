@@ -2,6 +2,7 @@
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -28,74 +29,99 @@ namespace ForrajeriaJovitaAPI.Services
             _configuration = configuration;
             _logger = logger;
 
+            // Cargar configuración desde User Secrets
             _privateKey = configuration["Payway:PrivateKey"]
-                ?? throw new InvalidOperationException("Payway:PrivateKey no configurado");
+                ?? throw new InvalidOperationException("Payway:PrivateKey no configurado en User Secrets");
             _publicKey = configuration["Payway:PublicKey"]
-                ?? throw new InvalidOperationException("Payway:PublicKey no configurado");
+                ?? throw new InvalidOperationException("Payway:PublicKey no configurado en User Secrets");
             _siteId = configuration["Payway:SiteId"]
-                ?? throw new InvalidOperationException("Payway:SiteId no configurado");
+                ?? throw new InvalidOperationException("Payway:SiteId no configurado en User Secrets");
             _isSandbox = configuration.GetValue<bool>("Payway:IsSandbox", true);
+
+            _logger.LogInformation("🔧 PaywayService inicializado - Sandbox: {IsSandbox}, SiteId: {SiteId}",
+                _isSandbox, _siteId);
         }
 
-        public async Task<PaywayCheckoutResponse> CreatePaymentAsync(PaywayCheckoutRequest request)
+        public async Task<CheckoutResponse> CreateCheckoutAsync(
+            int saleId,
+            decimal amount,
+            string description,
+            string customerName,
+            string customerEmail,
+            string customerPhone,
+            string returnUrl,
+            string cancelUrl,
+            CancellationToken cancellationToken = default)
         {
             try
             {
-                _logger.LogInformation("🔵 Creando pago Payway Forms - Amount: {Amount}, SaleId: {SaleId}",
-                    request.Amount, request.SaleId);
+                _logger.LogInformation("💳 Creando checkout Payway - SaleId: {SaleId}, Amount: {Amount}",
+                    saleId, amount);
 
-                var transactionId = $"JOV_{DateTime.Now:yyyyMMddHHmmss}_{request.SaleId}";
+                // Generar ID de transacción único
+                var transactionId = $"JOV_{DateTime.UtcNow:yyyyMMddHHmmss}_{saleId}";
 
+                // Preparar payload para Payway Forms
                 var payload = new
                 {
                     site_id = _siteId,
                     site_transaction_id = transactionId,
-                    amount = (decimal)(request.Amount * 100),
+                    amount = (int)(amount * 100), // Payway espera centavos
                     currency = "ARS",
-                    description = request.Description ?? $"Pedido #{request.SaleId} - Forrajería Jovita",
+                    description = description,
                     customer = new
                     {
-                        email = request.Customer?.Email ?? "cliente@temp.com",
-                        name = request.Customer?.Name ?? "Cliente"
+                        email = customerEmail,
+                        name = customerName,
+                        phone = customerPhone
                     },
                     payment_type = "single",
-                    back_url = request.CancelUrl,
-                    success_url = request.ReturnUrl,
-                    failure_url = request.CancelUrl
+                    back_url = cancelUrl,
+                    success_url = returnUrl,
+                    failure_url = cancelUrl
                 };
 
-                _logger.LogDebug("📤 Payload Payway: {Payload}", JsonSerializer.Serialize(payload));
+                var jsonPayload = JsonSerializer.Serialize(payload, new JsonSerializerOptions
+                {
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                    WriteIndented = true
+                });
 
+                _logger.LogDebug("📤 Payload a Payway: {Payload}", jsonPayload);
+
+                // Configurar headers
                 _httpClient.DefaultRequestHeaders.Clear();
                 _httpClient.DefaultRequestHeaders.Add("x-api-key", _privateKey);
 
-                var content = new StringContent(
-                    JsonSerializer.Serialize(payload),
-                    Encoding.UTF8,
-                    "application/json"
-                );
+                // Enviar request a Payway
+                var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
+                var response = await _httpClient.PostAsync("/v1.2/forms/validate", content, cancellationToken);
 
-                var response = await _httpClient.PostAsync("/v1.2/forms/validate", content);
-                var responseBody = await response.Content.ReadAsStringAsync();
+                var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
 
                 _logger.LogInformation("📥 Respuesta Payway: Status={Status}, Body={Body}",
                     response.StatusCode, responseBody);
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    _logger.LogError("❌ Error Payway: {Status} - {Body}", response.StatusCode, responseBody);
-                    throw new Exception($"Error de Payway: {response.StatusCode} - {responseBody}");
+                    _logger.LogError("❌ Error de Payway: {Status} - {Body}",
+                        response.StatusCode, responseBody);
+                    throw new HttpRequestException(
+                        $"Error al crear checkout en Payway: {response.StatusCode} - {responseBody}");
                 }
 
-                var paywayResponse = JsonSerializer.Deserialize<PaywayFormsResponse>(responseBody,
+                // Parsear respuesta
+                var paywayResponse = JsonSerializer.Deserialize<PaywayFormsResponse>(
+                    responseBody,
                     new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
                 if (paywayResponse?.Hash == null)
                 {
                     _logger.LogError("❌ Respuesta inválida de Payway (sin hash): {Body}", responseBody);
-                    throw new Exception("Payway no devolvió un hash válido");
+                    throw new InvalidOperationException("Payway no devolvió un hash válido");
                 }
 
+                // Construir URL del checkout
                 var baseUrl = _isSandbox
                     ? "https://forms.decidir.com"
                     : "https://ventasonline.payway.com.ar";
@@ -105,7 +131,7 @@ namespace ForrajeriaJovitaAPI.Services
                 _logger.LogInformation("✅ Checkout creado - Hash: {Hash}, URL: {Url}",
                     paywayResponse.Hash, checkoutUrl);
 
-                return new PaywayCheckoutResponse
+                return new CheckoutResponse
                 {
                     CheckoutUrl = checkoutUrl,
                     CheckoutId = paywayResponse.Hash,
@@ -118,11 +144,71 @@ namespace ForrajeriaJovitaAPI.Services
                 throw;
             }
         }
-    }
 
-    internal class PaywayFormsResponse
-    {
-        public string? Hash { get; set; }
-        public string? Status { get; set; }
+        public async Task<PaymentStatusResponse?> GetPaymentStatusAsync(
+            string transactionId,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                _logger.LogInformation("🔍 Consultando estado de pago: {TransactionId}", transactionId);
+
+                // Configurar headers
+                _httpClient.DefaultRequestHeaders.Clear();
+                _httpClient.DefaultRequestHeaders.Add("x-api-key", _privateKey);
+
+                // Hacer request a Payway
+                var response = await _httpClient.GetAsync(
+                    $"/v1.2/payments/{transactionId}",
+                    cancellationToken);
+
+                var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogWarning("⚠️ No se pudo obtener estado: {Status} - {Body}",
+                        response.StatusCode, responseBody);
+                    return null;
+                }
+
+                var result = JsonSerializer.Deserialize<PaywayPaymentResponse>(
+                    responseBody,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                if (result == null) return null;
+
+                return new PaymentStatusResponse
+                {
+                    Status = result.Status ?? "unknown",
+                    StatusDetail = result.StatusDetail,
+                    Amount = result.Amount ?? 0,
+                    Currency = result.Currency ?? "ARS",
+                    TransactionId = transactionId,
+                    PaymentId = result.PaymentId
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error al consultar estado de pago");
+                return null;
+            }
+        }
+
+        // DTO interno para respuesta de Payway Forms
+        private class PaywayFormsResponse
+        {
+            public string? Hash { get; set; }
+            public string? Status { get; set; }
+        }
+
+        // DTO interno para respuesta de consulta de pago
+        private class PaywayPaymentResponse
+        {
+            public string? Status { get; set; }
+            public string? StatusDetail { get; set; }
+            public decimal? Amount { get; set; }
+            public string? Currency { get; set; }
+            public string? PaymentId { get; set; }
+        }
     }
 }

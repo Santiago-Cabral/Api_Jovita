@@ -1,5 +1,9 @@
+// DTOs/Payway/PaywayWebhookNotification.cs
 namespace ForrajeriaJovitaAPI.DTOs.Payway
 {
+    /// <summary>
+    /// Notificación webhook recibida de Payway
+    /// </summary>
     public class PaywayWebhookNotification
     {
         public string? SiteTransactionId { get; set; }
