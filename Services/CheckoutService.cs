@@ -3,7 +3,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using ForrajeriaJovitaAPI.Data;
 using ForrajeriaJovitaAPI.Models;
-using ForrajeriaJovitaAPI.Services;
+using ForrajeriaJovitaAPI.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
