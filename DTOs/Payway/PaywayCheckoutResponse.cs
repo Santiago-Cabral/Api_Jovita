@@ -2,7 +2,7 @@ using System.Text.Json.Serialization;
 
 namespace ForrajeriaJovitaAPI.DTOs.Payway
 {
-    public class PaywayCheckoutResponse
+    public class CheckoutResponse
     {
         [JsonPropertyName("checkout_url")]
         public string CheckoutUrl { get; set; } = string.Empty;
