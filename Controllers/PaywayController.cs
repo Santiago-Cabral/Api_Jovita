@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Microsoft.EntityFrameworkCore;
 using ForrajeriaJovitaAPI.DTOs.Payway;
-using ForrajeriaJovitaAPI.Services;
+using ForrajeriaJovitaAPI.Services.Interfaces;
 using ForrajeriaJovitaAPI.Data;
 using ForrajeriaJovitaAPI.Models;
 
@@ -71,18 +71,8 @@ namespace ForrajeriaJovitaAPI.Controllers
                     return NotFound(new { error = $"Venta #{request.SaleId} no encontrada" });
                 }
 
-                // Crear checkout usando el servicio
-                var checkoutResponse = await _paywayService.CreateCheckoutAsync(
-                    request.SaleId,
-                    request.Amount,
-                    request.Description ?? $"Pedido #{request.SaleId} - Forrajería Jovita",
-                    request.Customer.Name,
-                    request.Customer.Email,
-                    request.Customer.Phone ?? "",
-                    request.ReturnUrl ?? $"{Request.Scheme}://{Request.Host}/payment/success?sale={request.SaleId}",
-                    request.CancelUrl ?? $"{Request.Scheme}://{Request.Host}/payment/cancel?sale={request.SaleId}",
-                    cancellationToken
-                );
+                // Usar la nueva firma del servicio (recibe CreateCheckoutRequest)
+                var checkoutResponse = await _paywayService.CreateCheckoutAsync(request, cancellationToken);
 
                 _logger.LogInformation("✅ [CREATE-CHECKOUT] Checkout creado - CheckoutId: {CheckoutId}, TransactionId: {TransactionId}",
                     checkoutResponse.CheckoutId, checkoutResponse.TransactionId);
