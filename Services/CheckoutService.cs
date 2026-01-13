@@ -9,6 +9,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using ForrajeriaJovitaAPI.DTOs.Checkout;
 using ForrajeriaJovitaAPI.DTOs.Payway;
+
 namespace ForrajeriaJovitaAPI.Services
 {
     public class CheckoutService : ICheckoutService
@@ -244,30 +245,31 @@ namespace ForrajeriaJovitaAPI.Services
 
                 paywayRedirectUrl = paywayResult.CheckoutUrl;
 
-                try
-                {
-                    var paymentTransaction = new PaymentTransaction
-                    {
-                        SaleId = sale.Id,
-                        TransactionId = paywayResult.TransactionId,
-                        CheckoutId = paywayResult.CheckoutId,
-                        Status = "pending",
-                        Amount = sale.Total,
-                        Currency = "ARS",
-                        PaymentMethod = "card",
-                        CreatedAt = DateTime.UtcNow
-                    };
-
-                    _context.PaymentTransactions.Add(paymentTransaction);
-                    await _context.SaveChangesAsync();
-
-                    _logger.LogInformation("✅ PaymentTransaction guardado para Sale {SaleId}, TransactionId: {TransactionId}",
-                        sale.Id, paywayResult.TransactionId);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "No se pudo guardar PaymentTransaction para Sale {SaleId} (no crítico).", sale.Id);
-                }
+                // TODO: Descomentar cuando se solucione caché del servidor
+                // try
+                // {
+                //     var paymentTransaction = new PaymentTransaction
+                //     {
+                //         SaleId = sale.Id,
+                //         TransactionId = paywayResult.TransactionId,
+                //         CheckoutId = paywayResult.CheckoutId,
+                //         Status = "pending",
+                //         Amount = sale.Total,
+                //         Currency = "ARS",
+                //         PaymentMethod = "card",
+                //         CreatedAt = DateTime.UtcNow
+                //     };
+                //
+                //     _context.PaymentTransactions.Add(paymentTransaction);
+                //     await _context.SaveChangesAsync();
+                //
+                //     _logger.LogInformation("✅ PaymentTransaction guardado para Sale {SaleId}, TransactionId: {TransactionId}",
+                //         sale.Id, paywayResult.TransactionId);
+                // }
+                // catch (Exception ex)
+                // {
+                //     _logger.LogWarning(ex, "No se pudo guardar PaymentTransaction para Sale {SaleId} (no crítico).", sale.Id);
+                // }
             }
             catch (Exception ex)
             {
