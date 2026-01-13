@@ -13,14 +13,7 @@ namespace ForrajeriaJovitaAPI.Services
         /// Crea un checkout de pago con Payway
         /// </summary>
         Task<CheckoutResponse> CreateCheckoutAsync(
-            int saleId,
-            decimal amount,
-            string description,
-            string customerName,
-            string customerEmail,
-            string customerPhone,
-            string returnUrl,
-            string cancelUrl,
+            CreateCheckoutRequest request,
             CancellationToken cancellationToken = default);
 
         /// <summary>

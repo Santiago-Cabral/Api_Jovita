@@ -71,6 +71,12 @@ namespace ForrajeriaJovitaAPI.Models
         public string Provider { get; set; } = "payway";
 
         /// <summary>
+        /// Método de pago (card, transfer, etc.)
+        /// </summary>
+        [MaxLength(50)]
+        public string? PaymentMethod { get; set; } = "card";
+
+        /// <summary>
         /// Fecha de creación de la transacción
         /// </summary>
         [Required]

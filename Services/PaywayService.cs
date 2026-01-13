@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using ForrajeriaJovitaAPI.DTOs.Payway;
+using ForrajeriaJovitaAPI.Services;
 
 namespace ForrajeriaJovitaAPI.Services
 {
@@ -29,7 +30,7 @@ namespace ForrajeriaJovitaAPI.Services
             _configuration = configuration;
             _logger = logger;
 
-            // Cargar configuración desde User Secrets
+            // Cargar configuración desde User Secrets / config
             _privateKey = configuration["Payway:PrivateKey"]
                 ?? throw new InvalidOperationException("Payway:PrivateKey no configurado en User Secrets");
             _publicKey = configuration["Payway:PublicKey"]
@@ -43,42 +44,35 @@ namespace ForrajeriaJovitaAPI.Services
         }
 
         public async Task<CheckoutResponse> CreateCheckoutAsync(
-            int saleId,
-            decimal amount,
-            string description,
-            string customerName,
-            string customerEmail,
-            string customerPhone,
-            string returnUrl,
-            string cancelUrl,
+            CreateCheckoutRequest request,
             CancellationToken cancellationToken = default)
         {
             try
             {
                 _logger.LogInformation("💳 Creando checkout Payway - SaleId: {SaleId}, Amount: {Amount}",
-                    saleId, amount);
+                    request.SaleId, request.Amount);
 
                 // Generar ID de transacción único
-                var transactionId = $"JOV_{DateTime.UtcNow:yyyyMMddHHmmss}_{saleId}";
+                var transactionId = $"JOV_{DateTime.UtcNow:yyyyMMddHHmmss}_{request.SaleId}";
 
                 // Preparar payload para Payway Forms
                 var payload = new
                 {
                     site_id = _siteId,
                     site_transaction_id = transactionId,
-                    amount = (int)(amount * 100), // Payway espera centavos
+                    amount = (int)(request.Amount * 100), // Payway espera centavos
                     currency = "ARS",
-                    description = description,
+                    description = request.Description ?? $"Pedido #{request.SaleId}",
                     customer = new
                     {
-                        email = customerEmail,
-                        name = customerName,
-                        phone = customerPhone
+                        email = request.Customer?.Email ?? string.Empty,
+                        name = request.Customer?.Name ?? string.Empty,
+                        phone = request.Customer?.Phone ?? string.Empty
                     },
                     payment_type = "single",
-                    back_url = cancelUrl,
-                    success_url = returnUrl,
-                    failure_url = cancelUrl
+                    back_url = request.CancelUrl,
+                    success_url = request.ReturnUrl,
+                    failure_url = request.CancelUrl
                 };
 
                 var jsonPayload = JsonSerializer.Serialize(payload, new JsonSerializerOptions

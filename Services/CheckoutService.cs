@@ -3,7 +3,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using ForrajeriaJovitaAPI.Data;
 using ForrajeriaJovitaAPI.Models;
-using ForrajeriaJovitaAPI.Services.Interfaces;
+using ForrajeriaJovitaAPI.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -228,7 +228,8 @@ namespace ForrajeriaJovitaAPI.Services
 
                 var frontendUrl = _config["Frontend:Url"] ?? "https://forrajeria-jovita.vercel.app";
 
-                var paywayResult = await _paywayService.CreatePaymentAsync(new PaywayCheckoutRequest
+                // Llamada al servicio Payway usando el DTO existente CreateCheckoutRequest
+                var paywayRequest = new CreateCheckoutRequest
                 {
                     SaleId = sale.Id,
                     Amount = sale.Total,
@@ -241,7 +242,9 @@ namespace ForrajeriaJovitaAPI.Services
                     },
                     ReturnUrl = $"{frontendUrl}/pago-exitoso?saleId={sale.Id}",
                     CancelUrl = $"{frontendUrl}/pago-cancelado?saleId={sale.Id}"
-                });
+                };
+
+                var paywayResult = await _paywayService.CreateCheckoutAsync(paywayRequest);
 
                 paywayRedirectUrl = paywayResult.CheckoutUrl;
 
@@ -257,7 +260,9 @@ namespace ForrajeriaJovitaAPI.Services
                         Amount = sale.Total,
                         Currency = "ARS",
                         PaymentMethod = "card",
-                        CreatedAt = DateTime.UtcNow
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow,
+                        RawResponse = null
                     };
 
                     _context.PaymentTransactions.Add(paymentTransaction);
@@ -296,3 +301,4 @@ namespace ForrajeriaJovitaAPI.Services
         }
     }
 }
+
