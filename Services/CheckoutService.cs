@@ -245,31 +245,31 @@ namespace ForrajeriaJovitaAPI.Services
 
                 paywayRedirectUrl = paywayResult.CheckoutUrl;
 
-                // TODO: Descomentar cuando se solucione caché del servidor
-                // try
-                // {
-                //     var paymentTransaction = new PaymentTransaction
-                //     {
-                //         SaleId = sale.Id,
-                //         TransactionId = paywayResult.TransactionId,
-                //         CheckoutId = paywayResult.CheckoutId,
-                //         Status = "pending",
-                //         Amount = sale.Total,
-                //         Currency = "ARS",
-                //         PaymentMethod = "card",
-                //         CreatedAt = DateTime.UtcNow
-                //     };
-                //
-                //     _context.PaymentTransactions.Add(paymentTransaction);
-                //     await _context.SaveChangesAsync();
-                //
-                //     _logger.LogInformation("✅ PaymentTransaction guardado para Sale {SaleId}, TransactionId: {TransactionId}",
-                //         sale.Id, paywayResult.TransactionId);
-                // }
-                // catch (Exception ex)
-                // {
-                //     _logger.LogWarning(ex, "No se pudo guardar PaymentTransaction para Sale {SaleId} (no crítico).", sale.Id);
-                // }
+                // Guardar PaymentTransaction (se consideró crítico para tracking de pagos)
+                try
+                {
+                    var paymentTransaction = new PaymentTransaction
+                    {
+                        SaleId = sale.Id,
+                        TransactionId = paywayResult.TransactionId,
+                        CheckoutId = paywayResult.CheckoutId,
+                        Status = "pending",
+                        Amount = sale.Total,
+                        Currency = "ARS",
+                        PaymentMethod = "card",
+                        CreatedAt = DateTime.UtcNow
+                    };
+
+                    _context.PaymentTransactions.Add(paymentTransaction);
+                    await _context.SaveChangesAsync();
+
+                    _logger.LogInformation("✅ PaymentTransaction guardado para Sale {SaleId}, TransactionId: {TransactionId}",
+                        sale.Id, paywayResult.TransactionId);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "No se pudo guardar PaymentTransaction para Sale {SaleId} (no crítico).", sale.Id);
+                }
             }
             catch (Exception ex)
             {
@@ -288,7 +288,7 @@ namespace ForrajeriaJovitaAPI.Services
                 StockActualizado = stocks.Select(s => new CheckoutStockDto
                 {
                     ProductId = s.ProductId,
-                    Stock = s.Quantity
+                    Stock = (int)s.Quantity // conversión explícita para evitar error de compilación
                 }).ToList(),
                 TicketUrl = null,
                 PaywayRedirectUrl = paywayRedirectUrl
@@ -296,4 +296,3 @@ namespace ForrajeriaJovitaAPI.Services
         }
     }
 }
-
