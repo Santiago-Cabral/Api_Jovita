@@ -1,13 +1,16 @@
-n// DTOs/Payway/CheckoutResponse.cs
+using System.Text.Json.Serialization;
+
 namespace ForrajeriaJovitaAPI.DTOs.Payway
 {
-    /// <summary>
-    /// Respuesta al crear un checkout (para devolver al frontend)
-    /// </summary>
-    public class CheckoutResponse
+    public class PaywayCheckoutResponse
     {
+        [JsonPropertyName("checkout_url")]
         public string CheckoutUrl { get; set; } = string.Empty;
+
+        [JsonPropertyName("checkout_id")]
         public string CheckoutId { get; set; } = string.Empty;
+
+        [JsonPropertyName("transaction_id")]
         public string TransactionId { get; set; } = string.Empty;
     }
 }
