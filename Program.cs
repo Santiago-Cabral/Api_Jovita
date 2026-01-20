@@ -19,14 +19,40 @@ builder.Logging.SetMinimumLevel(LogLevel.Information);
 builder.Services.AddDbContext<ForrajeriaContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
+// ===== CONFIGURACIÓN CORREGIDA DE HTTPCLIENT PARA PAYWAY =====
 builder.Services.AddHttpClient();
 
-builder.Services.AddHttpClient("payway", client =>
+// HttpClient configurado correctamente para PaywayService
+builder.Services.AddHttpClient<IPaywayService, PaywayService>(client =>
 {
-    var baseUrl = builder.Configuration["Payway:BaseUrl"] ?? "https://api.decidir.com";
-    client.BaseAddress = new Uri(baseUrl);
+    // Timeout mayor para operaciones de pago
     client.Timeout = TimeSpan.FromSeconds(30);
+    client.DefaultRequestHeaders.Add("User-Agent", "ForrajeriaJovita/1.0");
+    client.DefaultRequestHeaders.Add("Cache-Control", "no-cache");
+})
+.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+{
+    AllowAutoRedirect = true,
+    MaxAutomaticRedirections = 3,
+
+    // Para desarrollo (permite certificados autofirmados en SANDBOX)
+    // IMPORTANTE: En producción esto debe ser removido o validar correctamente
+    ServerCertificateCustomValidationCallback = (message, cert, chain, errors) =>
+    {
+        var isProduction = builder.Configuration["Payway:Environment"]?.ToLower() == "production";
+        if (isProduction)
+        {
+            // En producción, validar certificados correctamente
+            return errors == System.Net.Security.SslPolicyErrors.None;
+        }
+        // En desarrollo/sandbox, permitir todos (solo para testing)
+        return true;
+    }
 });
+
+// NOTA: Ya no necesitas este HttpClient named "payway" porque ahora usamos el typed client
+// Comentado para referencia:
+// builder.Services.AddHttpClient("payway", client => { ... });
 
 var jwtKey = builder.Configuration["Jwt:Key"] ?? throw new Exception("Jwt:Key no configurado");
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? throw new Exception("Jwt:Issuer no configurado");
@@ -64,7 +90,10 @@ builder.Services.AddScoped<ICategoryService, CategoryService>();
 builder.Services.AddScoped<IClientAccountService, ClientAccountService>();
 builder.Services.AddScoped<IVentaService, VentaService>();
 builder.Services.AddScoped<ICheckoutService, CheckoutService>();
-builder.Services.AddScoped<IPaywayService, PaywayService>();
+
+// NOTA: PaywayService ya está registrado arriba con AddHttpClient<IPaywayService, PaywayService>
+// No necesitas esta línea:
+// builder.Services.AddScoped<IPaywayService, PaywayService>();
 
 builder.Services.AddControllers()
     .AddJsonOptions(o =>
@@ -153,6 +182,12 @@ var logger = app.Services.GetRequiredService<ILogger<Program>>();
 logger.LogInformation("🚀 API Forrajeria Jovita iniciada");
 logger.LogInformation("📍 Environment: {Env}", app.Environment.EnvironmentName);
 logger.LogInformation("🌐 CORS habilitado para: localhost:5173, localhost:3000, forrajeria-jovita.vercel.app");
-logger.LogInformation("💳 Payway configurado en: {PaywayUrl}", builder.Configuration["Payway:BaseUrl"]);
+
+// Log mejorado de configuración de Payway
+var paywayEnv = builder.Configuration["Payway:Environment"] ?? "sandbox";
+var paywayUrl = paywayEnv == "production"
+    ? "https://live.decidir.com/api/v2"
+    : "https://developers.decidir.com/api/v2";
+logger.LogInformation("💳 Payway configurado - Ambiente: {Env}, URL: {Url}", paywayEnv, paywayUrl);
 
 app.Run();
