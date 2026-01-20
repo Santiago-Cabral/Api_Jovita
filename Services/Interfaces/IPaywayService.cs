@@ -1,25 +1,16 @@
-// Services/Interfaces/IPaywayService.cs
 using System.Threading;
 using System.Threading.Tasks;
-using ForrajeriaJovitaAPI.DTOs.Payway;
+using ForrajeriaJovitaAPI.DTOs.Payway; // Ensure this namespace exists and contains CreateCheckoutResponse
 
 namespace ForrajeriaJovitaAPI.Services.Interfaces
 {
-    /// <summary>
-    /// Servicio para integración con Payway (Decidir)
-    /// </summary>
     public interface IPaywayService
     {
-        /// <summary>
-        /// Crea un checkout de pago con Payway
-        /// </summary>
-        Task<CheckoutResponse> CreateCheckoutAsync(
+        // Changed return type from CheckoutResponse to CreateCheckoutResponse
+        Task<CreateCheckoutResponse> CreateCheckoutAsync(
             CreateCheckoutRequest request,
             CancellationToken cancellationToken = default);
 
-        /// <summary>
-        /// Consulta el estado de un pago por su ID de transacción
-        /// </summary>
         Task<PaymentStatusResponse?> GetPaymentStatusAsync(
             string transactionId,
             CancellationToken cancellationToken = default);
