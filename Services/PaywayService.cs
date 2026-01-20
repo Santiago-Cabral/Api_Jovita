@@ -8,6 +8,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using ForrajeriaJovitaAPI.DTOs.Payway;
 using ForrajeriaJovitaAPI.Services.Interfaces; // ADD THIS
+using ForrajeriaJovitaAPI.Models.DTOs; // <--- Línea clave
 
 namespace ForrajeriaJovitaAPI.Services
 {

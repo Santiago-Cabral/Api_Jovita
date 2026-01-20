@@ -1,6 +1,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 using ForrajeriaJovitaAPI.DTOs.Payway; // Ensure this namespace exists and contains CreateCheckoutResponse
+using ForrajeriaJovitaAPI.Models.DTOs; // <--- Línea clave
 
 namespace ForrajeriaJovitaAPI.Services.Interfaces
 {
