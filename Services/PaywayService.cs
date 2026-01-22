@@ -29,7 +29,7 @@ namespace ForrajeriaJovitaAPI.Services
             _logger.LogInformation("🔧 [PAYWAY] Servicio inicializado");
             _logger.LogInformation("   API URL: {Url}", _options.ApiUrl);
             _logger.LogInformation("   Public Key: {Key}...",
-                _options.PublicKey?.Substring(0, Math.Min(10, _options.PublicKey.Length)));
+                _options.PublicKey?.Substring(0, Math.Min(10, _options.PublicKey?.Length ?? 0)));
         }
 
         public async Task<CreateCheckoutResponse> CreateCheckoutAsync(
@@ -41,13 +41,9 @@ namespace ForrajeriaJovitaAPI.Services
                 _logger.LogInformation("💳 [PAYWAY] Creando checkout - Sale: {SaleId}, Amount: ${Amount}",
                     request.SaleId, request.Amount);
 
-                // 1. Generar Transaction ID
                 var transactionId = $"JOV_{DateTime.UtcNow:yyyyMMddHHmmss}_{request.SaleId}_{new Random().Next(1000, 9999)}";
-
-                // 2. Convertir a centavos
                 var amountInCents = (int)(request.Amount * 100);
 
-                // 3. Preparar payload para Decidir API v2
                 var payload = new
                 {
                     site_transaction_id = transactionId,
@@ -74,9 +70,9 @@ namespace ForrajeriaJovitaAPI.Services
 
                 _logger.LogDebug("📦 [PAYWAY] Payload: {Payload}", jsonPayload);
 
-                // 4. Crear request HTTP
-                // IMPORTANTE: Usar /api/v2/payments en lugar de /web/v1.2/forms/validate
-                var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/api/v2/payments")
+                // ✅ USAR URL COMPLETA, NO RELATIVA
+                var url = $"{_options.ApiUrl}/payments";
+                var httpRequest = new HttpRequestMessage(HttpMethod.Post, url)
                 {
                     Content = new StringContent(jsonPayload, Encoding.UTF8, "application/json")
                 };
@@ -84,9 +80,8 @@ namespace ForrajeriaJovitaAPI.Services
                 httpRequest.Headers.Add("apikey", _options.PublicKey);
                 httpRequest.Headers.Add("Cache-Control", "no-cache");
 
-                _logger.LogInformation("🌐 [PAYWAY] POST {Url}/api/v2/payments", _options.ApiUrl);
+                _logger.LogInformation("🌐 [PAYWAY] POST {Url}", url);
 
-                // 5. Enviar request
                 var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
                 var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
 
@@ -100,7 +95,6 @@ namespace ForrajeriaJovitaAPI.Services
 
                 _logger.LogDebug("📄 [PAYWAY] Response body: {Response}", responseContent);
 
-                // 6. Parsear respuesta
                 var paywayResponse = JsonSerializer.Deserialize<PaywayPaymentResponse>(
                     responseContent,
                     new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
@@ -111,12 +105,12 @@ namespace ForrajeriaJovitaAPI.Services
                     throw new InvalidOperationException("Decidir no devolvió Payment ID válido");
                 }
 
-                // 7. Construir URL del formulario
-                // Extraer base URL sin /api/v2
+                // Construir URL del formulario
                 var baseUrl = _options.ApiUrl.Replace("/api/v2", "");
                 var checkoutUrl = $"{baseUrl}/web/forms?payment_id={paywayResponse.Id}&apikey={_options.PublicKey}";
 
-                _logger.LogInformation("✅ [PAYWAY] Checkout OK - ID: {Id}", paywayResponse.Id);
+                _logger.LogInformation("✅ [PAYWAY] Checkout OK - ID: {Id}, URL: {Url}",
+                    paywayResponse.Id, checkoutUrl);
 
                 return new CreateCheckoutResponse
                 {
@@ -141,5 +135,5 @@ namespace ForrajeriaJovitaAPI.Services
                 .Replace("+", "_");
         }
     }
-    
+   
 }
