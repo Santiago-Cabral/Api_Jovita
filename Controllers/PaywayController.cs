@@ -1,12 +1,15 @@
 ﻿using System;
 using System.IO;
+using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using ForrajeriaJovitaAPI.DTOs.Payway;
 using ForrajeriaJovitaAPI.Services.Interfaces;
 using ForrajeriaJovitaAPI.Data;
@@ -21,15 +24,18 @@ namespace ForrajeriaJovitaAPI.Controllers
         private readonly IPaywayService _paywayService;
         private readonly ILogger<PaywayController> _logger;
         private readonly ForrajeriaContext _context;
+        private readonly IConfiguration _configuration;
 
         public PaywayController(
             IPaywayService paywayService,
             ILogger<PaywayController> logger,
-            ForrajeriaContext context)
+            ForrajeriaContext context,
+            IConfiguration configuration)
         {
             _paywayService = paywayService;
             _logger = logger;
             _context = context;
+            _configuration = configuration;
         }
 
         /// <summary>
@@ -43,7 +49,7 @@ namespace ForrajeriaJovitaAPI.Controllers
         {
             try
             {
-                _logger.LogInformation("💳 [CREATE-CHECKOUT] Iniciando para venta #{SaleId} - Monto: ${Amount}",
+                _logger.LogInformation("💳 [CREATE-CHECKOUT] Iniciando para venta #{SaleId} - Monto: {Amount}",
                     request.SaleId, request.Amount);
 
                 // Validaciones básicas
@@ -71,7 +77,7 @@ namespace ForrajeriaJovitaAPI.Controllers
                     return NotFound(new { error = $"Venta #{request.SaleId} no encontrada" });
                 }
 
-                // Usar la nueva firma del servicio (recibe CreateCheckoutRequest)
+                // Crear checkout via servicio
                 var checkoutResponse = await _paywayService.CreateCheckoutAsync(request, cancellationToken);
 
                 _logger.LogInformation("✅ [CREATE-CHECKOUT] Checkout creado - CheckoutId: {CheckoutId}, TransactionId: {TransactionId}",
@@ -118,14 +124,14 @@ namespace ForrajeriaJovitaAPI.Controllers
 
         /// <summary>
         /// POST /api/Payway/webhook
-        /// Recibe notificaciones de estado de pago desde Payway
+        /// Recibe notificaciones de estado de pago desde Payway (verifica HMAC SHA256)
         /// </summary>
         [HttpPost("webhook")]
         public async Task<IActionResult> Webhook(CancellationToken cancellationToken)
         {
             try
             {
-                // Leer el body del request
+                // 1) Leer body RAW
                 Request.EnableBuffering();
                 using var reader = new StreamReader(Request.Body, Encoding.UTF8, leaveOpen: true);
                 var body = await reader.ReadToEndAsync();
@@ -133,7 +139,55 @@ namespace ForrajeriaJovitaAPI.Controllers
 
                 _logger.LogInformation("🔔 [WEBHOOK] Notificación recibida: {Body}", body);
 
-                // Parsear la notificación
+                // 2) Validar firma HMAC SHA256
+                var signatureHeader =
+                    Request.Headers["x-signature"].FirstOrDefault() ??
+                    Request.Headers["X-Signature"].FirstOrDefault() ??
+                    Request.Headers["X-Hub-Signature-256"].FirstOrDefault();
+
+                if (string.IsNullOrEmpty(signatureHeader))
+                {
+                    _logger.LogWarning("⚠️ [WEBHOOK] Firma ausente");
+                    return Unauthorized(new { error = "Signature missing" });
+                }
+
+                var secret = _configuration["Payway:WebhookSecret"];
+                if (string.IsNullOrEmpty(secret))
+                {
+                    _logger.LogCritical("❌ [WEBHOOK] WebhookSecret no configurado");
+                    return StatusCode(500, new { error = "Webhook secret not configured" });
+                }
+
+                // Normalizar firma (acepta "sha256=<hex>" o solo hex)
+                var receivedSignature = signatureHeader.Replace("sha256=", "", StringComparison.OrdinalIgnoreCase).Trim();
+                byte[] receivedBytes;
+
+                try
+                {
+                    // intenta interpretar como hex
+                    if (receivedSignature.Length % 2 == 1) receivedSignature = "0" + receivedSignature;
+                    receivedBytes = Enumerable.Range(0, receivedSignature.Length / 2)
+                        .Select(i => Convert.ToByte(receivedSignature.Substring(i * 2, 2), 16))
+                        .ToArray();
+                }
+                catch
+                {
+                    _logger.LogWarning("⚠️ [WEBHOOK] Firma no hex válida");
+                    return Unauthorized(new { error = "Invalid signature format" });
+                }
+
+                using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret));
+                var computed = hmac.ComputeHash(Encoding.UTF8.GetBytes(body));
+
+                if (!CryptographicOperations.FixedTimeEquals(computed, receivedBytes))
+                {
+                    _logger.LogWarning("❌ [WEBHOOK] Firma inválida");
+                    return Unauthorized(new { error = "Invalid signature" });
+                }
+
+                _logger.LogInformation("🔐 [WEBHOOK] Firma válida");
+
+                // 3) Parsear la notificación
                 PaywayWebhookNotification? notification;
                 try
                 {
@@ -152,7 +206,7 @@ namespace ForrajeriaJovitaAPI.Controllers
                     return BadRequest(new { error = "Payload inválido" });
                 }
 
-                // Buscar la transacción
+                // 4) Buscar la transacción por transactionId (site_transaction_id)
                 var transaction = await _context.PaymentTransactions
                     .Include(t => t.Sale)
                     .FirstOrDefaultAsync(
@@ -166,20 +220,28 @@ namespace ForrajeriaJovitaAPI.Controllers
                     return NotFound(new { error = "Transacción no encontrada" });
                 }
 
-                // Evitar procesar notificaciones duplicadas
-                if (transaction.Status == "approved" && notification.Status?.ToLower() == "approved")
+                // 5) Verificar montos (advertencia, no bloqueo)
+                if (notification.Amount.HasValue && notification.Amount.Value != transaction.Amount)
                 {
-                    _logger.LogInformation("ℹ️ [WEBHOOK] Transacción ya aprobada, ignorando duplicado");
-                    return Ok(new { received = true, status = "already_processed" });
+                    _logger.LogWarning("⚠️ [WEBHOOK] Monto notificado ({Notified}) difiere del monto esperado ({Expected}) para TransactionId {TransactionId}",
+                        notification.Amount.Value, transaction.Amount, transaction.TransactionId);
+                    // No detenemos el procesamiento; solo dejamos registro para auditoría
                 }
 
-                // Actualizar estado de la transacción
+                // 6) Idempotencia: ignorar si ya procesado con mismo estado
+                var newStatus = notification.Status?.ToLowerInvariant();
+                if (!string.IsNullOrEmpty(newStatus) && transaction.Status == newStatus)
+                {
+                    _logger.LogInformation("ℹ️ [WEBHOOK] Evento duplicado ignorado para TransactionId {TransactionId}", transaction.TransactionId);
+                    return Ok(new { received = true, duplicated = true });
+                }
+
+                // 7) Actualizar estado local y la venta
                 var oldStatus = transaction.Status;
-                transaction.Status = notification.Status?.ToLower() ?? transaction.Status;
+                transaction.Status = newStatus ?? transaction.Status;
                 transaction.StatusDetail = notification.StatusDetail;
                 transaction.UpdatedAt = DateTime.UtcNow;
 
-                // Actualizar estado del pago según el resultado
                 switch (transaction.Status)
                 {
                     case "approved":
@@ -201,25 +263,31 @@ namespace ForrajeriaJovitaAPI.Controllers
                             transaction.TransactionId, transaction.StatusDetail);
                         break;
 
+                    case "cancelled":
+                    case "refunded":
+                        if (transaction.Sale != null)
+                        {
+                            transaction.Sale.PaymentStatus = 3; // Cancelado/Reembolsado
+                        }
+                        _logger.LogInformation("ℹ️ [WEBHOOK] Pago cancelado/reembolsado - TransactionId: {TransactionId}", transaction.TransactionId);
+                        break;
+
                     case "pending":
+                    default:
                         if (transaction.Sale != null)
                         {
                             transaction.Sale.PaymentStatus = 0; // Pendiente
                         }
-                        _logger.LogInformation("⏳ [WEBHOOK] Pago pendiente - TransactionId: {TransactionId}",
-                            transaction.TransactionId);
-                        break;
-
-                    default:
-                        _logger.LogWarning("⚠️ [WEBHOOK] Estado desconocido: {Status}", transaction.Status);
+                        _logger.LogInformation("⏳ [WEBHOOK] Pago pendiente/otro estado - TransactionId: {TransactionId}, Status: {Status}",
+                            transaction.TransactionId, transaction.Status);
                         break;
                 }
 
-                // Guardar cambios
+                // 8) Guardar cambios
                 await _context.SaveChangesAsync(cancellationToken);
 
-                _logger.LogInformation("💾 [WEBHOOK] Estado actualizado: {OldStatus} → {NewStatus}",
-                    oldStatus, transaction.Status);
+                _logger.LogInformation("💾 [WEBHOOK] Estado actualizado: {OldStatus} → {NewStatus} for TransactionId {TransactionId}",
+                    oldStatus, transaction.Status, transaction.TransactionId);
 
                 return Ok(new { received = true, status = transaction.Status });
             }
@@ -254,8 +322,7 @@ namespace ForrajeriaJovitaAPI.Controllers
 
                 if (transaction == null)
                 {
-                    _logger.LogWarning("⚠️ [PAYMENT-STATUS] Transacción no encontrada: {TransactionId}",
-                        transactionId);
+                    _logger.LogWarning("⚠️ [PAYMENT-STATUS] Transacción no encontrada: {TransactionId}", transactionId);
                     return NotFound(new { error = "Transacción no encontrada" });
                 }
 
