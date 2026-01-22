@@ -5,26 +5,31 @@ using System.Text.Json;
 using ForrajeriaJovitaAPI.DTOs.Payway;
 using ForrajeriaJovitaAPI.Models;
 using ForrajeriaJovitaAPI.Services.Interfaces;
+using ForrajeriaJovitaAPI.Data;
+using Microsoft.EntityFrameworkCore;
 
 public class PaywayService : IPaywayService
 {
     private readonly HttpClient _http;
     private readonly PaywayOptions _cfg;
+    private readonly ForrajeriaContext _db;
 
-    public PaywayService(HttpClient http, PaywayOptions cfg)
+    public PaywayService(HttpClient http, PaywayOptions cfg, ForrajeriaContext db)
     {
         _http = http;
         _cfg = cfg;
+        _db = db;
     }
 
+    // ==============================
+    // CREATE CHECKOUT
+    // ==============================
     public async Task<CreateCheckoutResponse> CreateCheckoutAsync(
         CreateCheckoutRequest request,
         CancellationToken cancellationToken)
     {
-        // 1️⃣ TransactionId único (Payway lo necesita)
         var transactionId = $"SALE_{request.SaleId}_{DateTime.UtcNow:yyyyMMddHHmmss}";
 
-        // 2️⃣ Payload EXACTO que Payway espera
         var payload = new
         {
             site = new
@@ -48,7 +53,6 @@ public class PaywayService : IPaywayService
 
         var json = JsonSerializer.Serialize(payload);
 
-        // 3️⃣ Firma HMAC SHA256
         var signature = Convert.ToBase64String(
             HMACSHA256.HashData(
                 Encoding.UTF8.GetBytes(_cfg.PrivateKey),
@@ -56,7 +60,6 @@ public class PaywayService : IPaywayService
             )
         );
 
-        // 4️⃣ Request Payway
         var httpRequest = new HttpRequestMessage(
             HttpMethod.Post,
             "/web/v1.2/forms/validate"
@@ -76,13 +79,11 @@ public class PaywayService : IPaywayService
             );
         }
 
-        // 5️⃣ Respuesta Payway
         var validate = JsonSerializer.Deserialize<FormValidateResponse>(
             content,
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
         ) ?? throw new Exception("Respuesta Payway inválida");
 
-        // 6️⃣ URL FINAL DE REDIRECCIÓN
         var checkoutUrl =
             $"https://forms.decidir.com/web/forms/{validate.Hash}?apikey={_cfg.PublicKey}";
 
@@ -91,6 +92,36 @@ public class PaywayService : IPaywayService
             CheckoutId = validate.Hash,
             TransactionId = transactionId,
             CheckoutUrl = checkoutUrl
+        };
+    }
+
+    // ==============================
+    // GET PAYMENT STATUS (FROM DB)
+    // ==============================
+    public async Task<PaywayPaymentStatusResponse> GetPaymentStatusAsync(
+        string transactionId,
+        CancellationToken cancellationToken)
+    {
+        var tx = await _db.PaymentTransactions
+            .AsNoTracking()
+            .FirstOrDefaultAsync(t => t.TransactionId == transactionId, cancellationToken);
+
+        if (tx == null)
+        {
+            throw new KeyNotFoundException("Transacción no encontrada");
+        }
+
+        return new PaywayPaymentStatusResponse
+        {
+            TransactionId = tx.TransactionId,
+            SaleId = tx.SaleId,
+            Status = tx.Status,
+            StatusDetail = tx.StatusDetail,
+            Amount = tx.Amount,
+            Currency = tx.Currency,
+            CreatedAt = tx.CreatedAt,
+            UpdatedAt = tx.UpdatedAt,
+            CompletedAt = tx.CompletedAt
         };
     }
 }
