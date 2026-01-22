@@ -131,6 +131,21 @@ namespace ForrajeriaJovitaAPI.Services
             };
         }
 
+        // <-- IMPLEMENTACIÓN REQUERIDA POR LA INTERFAZ
+        // Actualmente devuelve null (placeholder). Reemplazá por la llamada a Payway o DB cuando lo implementes.
+        public Task<PaymentStatusResponse?> GetPaymentStatusAsync(
+            string transactionId,
+            CancellationToken cancellationToken = default)
+        {
+            _logger.LogInformation("GetPaymentStatusAsync invoked for TransactionId: {Tx}", transactionId);
+
+            // Placeholder: no hay implementación externa todavía.
+            // Opciones futuras:
+            // - Llamar a _httpClient.GetAsync($"/payments/{transactionId}") y mapear la respuesta
+            // - Consultar PaymentTransactions en tu BD
+            return Task.FromResult<PaymentStatusResponse?>(null);
+        }
+
         private static string GenerateTransactionId(int saleId)
         {
             var ts = DateTime.UtcNow.ToString("yyyyMMddHHmmss");
