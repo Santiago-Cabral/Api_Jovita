@@ -13,18 +13,20 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Polly;
 using Polly.Extensions.Http;
+using System.Net.Http.Headers;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ==============================================================================
-// 0. PAYWAY OPTIONS CLASS BINDING (needs PaywayOptions class present in project)
-// ==============================================================================
+// -----------------------------------------------------------------------------
+// 0. BIND PAYWAY OPTIONS (reads from appsettings.json OR User Secrets)
+// -----------------------------------------------------------------------------
 builder.Services.Configure<PaywayOptions>(builder.Configuration.GetSection("Payway"));
+// Expose PaywayOptions as a singleton for easy access (e.g., in startup logging)
 builder.Services.AddSingleton(sp => sp.GetRequiredService<IOptions<PaywayOptions>>().Value);
 
-// ==============================================================================
+// -----------------------------------------------------------------------------
 // 1. LOGGING & DATABASE
-// ==============================================================================
+// -----------------------------------------------------------------------------
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Logging.AddDebug();
@@ -33,36 +35,35 @@ builder.Logging.SetMinimumLevel(LogLevel.Information);
 builder.Services.AddDbContext<ForrajeriaContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// ==============================================================================
+// -----------------------------------------------------------------------------
 // 2. POLICIES (Polly) - Retry Policy
-// ==============================================================================
+// -----------------------------------------------------------------------------
 static IAsyncPolicy<System.Net.Http.HttpResponseMessage> GetRetryPolicy()
 {
-    // Retry on transient errors (5xx, network issues) with exponential backoff
     return HttpPolicyExtensions
         .HandleTransientHttpError()
         .WaitAndRetryAsync(3, retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)));
 }
 
-// ==============================================================================
-// 3. PAYWAY HTTP CLIENT CONFIGURATION (HttpClientFactory + Polly)
-// ==============================================================================
+// -----------------------------------------------------------------------------
+// 3. PAYWAY HTTP CLIENT CONFIGURATION (HttpClientFactory + Polly + message handler)
+// -----------------------------------------------------------------------------
 builder.Services.AddHttpClient<IPaywayService, PaywayService>((sp, client) =>
 {
-    var cfg = sp.GetRequiredService<ForrajeriaJovitaAPI.PaywayOptions?>();
-    if (cfg == null) cfg = sp.GetRequiredService<IConfiguration>().GetSection("Payway").Get<PaywayOptions>();
+    // Prefer the bound PaywayOptions instance
+    var cfg = sp.GetRequiredService<IOptions<PaywayOptions>>().Value;
 
-    var env = (cfg?.Environment ?? builder.Configuration["Payway:Environment"] ?? "sandbox").ToLowerInvariant();
+    var env = (cfg.Environment ?? builder.Configuration["Payway:Environment"] ?? "sandbox").ToLowerInvariant();
 
     var baseUrl = env == "production"
-        ? (cfg?.LiveApiBaseUrl ?? builder.Configuration["Payway:LiveApiBaseUrl"] ?? "https://live.decidir.com/api/v2")
-        : (cfg?.SandboxApiBaseUrl ?? builder.Configuration["Payway:SandboxApiBaseUrl"] ?? "https://developers.decidir.com/api/v2");
+        ? (cfg.LiveApiBaseUrl ?? builder.Configuration["Payway:LiveApiBaseUrl"] ?? "https://live.decidir.com")
+        : (cfg.SandboxApiBaseUrl ?? builder.Configuration["Payway:SandboxApiBaseUrl"] ?? "https://developers.decidir.com");
 
     client.BaseAddress = new Uri(baseUrl);
     client.Timeout = TimeSpan.FromSeconds(45);
-    client.DefaultRequestHeaders.Add("User-Agent", "ForrajeriaJovitaAPI/1.0");
-    client.DefaultRequestHeaders.Add("Cache-Control", "no-cache");
-    client.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("ForrajeriaJovitaAPI/1.0");
+    client.DefaultRequestHeaders.CacheControl = new CacheControlHeaderValue { NoCache = true };
+    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 })
 .AddPolicyHandler(GetRetryPolicy())
 .ConfigurePrimaryHttpMessageHandler(() =>
@@ -73,29 +74,28 @@ builder.Services.AddHttpClient<IPaywayService, PaywayService>((sp, client) =>
         MaxAutomaticRedirections = 3
     };
 
-    var env = builder.Configuration["Payway:Environment"]?.ToLower();
-    var isProduction = env == "production" || builder.Environment.IsProduction();
+    // Use builder.Configuration / builder.Environment (outer scope) to decide certificate validation
+    var envConfig = builder.Configuration["Payway:Environment"]?.ToLower();
+    var isProduction = (envConfig == "production") || builder.Environment.IsProduction();
 
     if (isProduction)
     {
-        // En producción validación estricta de certificados
         handler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) =>
             errors == SslPolicyErrors.None;
     }
     else
     {
-        // En sandbox/dev: aceptar certificados (útil para entornos de pruebas).
-        // NO dejar esto en producción.
+        // WARNING: Accept any cert in dev/sandbox only (useful for internal testing)
         handler.ServerCertificateCustomValidationCallback = System.Net.Http.HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
     }
 
     return handler;
 });
 
-// ==============================================================================
+// -----------------------------------------------------------------------------
 // 4. AUTHENTICATION & JWT
-// ==============================================================================
-var jwtKey = builder.Configuration["Jwt:Key"] ?? throw new Exception("Jwt:Key is not configured in appsettings.json");
+// -----------------------------------------------------------------------------
+var jwtKey = builder.Configuration["Jwt:Key"] ?? throw new Exception("Jwt:Key is not configured");
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? throw new Exception("Jwt:Issuer is not configured");
 var jwtAudience = builder.Configuration["Jwt:Audience"] ?? throw new Exception("Jwt:Audience is not configured");
 
@@ -104,7 +104,6 @@ var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
-        // Requerir HTTPS en producción
         options.RequireHttpsMetadata = builder.Environment.IsProduction();
         options.SaveToken = true;
         options.TokenValidationParameters = new TokenValidationParameters
@@ -120,9 +119,9 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
-// ==============================================================================
+// -----------------------------------------------------------------------------
 // 5. DEPENDENCY INJECTION (SERVICES)
-// ==============================================================================
+// -----------------------------------------------------------------------------
 builder.Services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();
 builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
 
@@ -136,16 +135,16 @@ builder.Services.AddScoped<IClientAccountService, ClientAccountService>();
 builder.Services.AddScoped<IVentaService, VentaService>();
 builder.Services.AddScoped<ICheckoutService, CheckoutService>();
 
-// NOTA: IPaywayService ya está registrado con AddHttpClient arriba.
+// NOTE: IPaywayService registered above with AddHttpClient
 
-// ==============================================================================
+// -----------------------------------------------------------------------------
 // 6. CONTROLLERS & SWAGGER
-// ==============================================================================
+// -----------------------------------------------------------------------------
 builder.Services.AddControllers()
     .AddJsonOptions(o =>
     {
         o.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
-        o.JsonSerializerOptions.PropertyNamingPolicy = null; // Mantener PascalCase en output
+        o.JsonSerializerOptions.PropertyNamingPolicy = null;
         o.JsonSerializerOptions.WriteIndented = true;
     });
 
@@ -166,7 +165,7 @@ builder.Services.AddSwaggerGen(c =>
         Scheme = "bearer",
         BearerFormat = "JWT",
         In = ParameterLocation.Header,
-        Description = "Enter JWT token with 'Bearer ' prefix (e.g., 'Bearer eyJ...')",
+        Description = "Enter JWT token with 'Bearer ' prefix",
         Reference = new OpenApiReference
         {
             Type = ReferenceType.SecurityScheme,
@@ -181,9 +180,9 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
-// ==============================================================================
+// -----------------------------------------------------------------------------
 // 7. CORS CONFIGURATION
-// ==============================================================================
+// -----------------------------------------------------------------------------
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
@@ -202,12 +201,11 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// ==============================================================================
+// -----------------------------------------------------------------------------
 // 8. MIDDLEWARE PIPELINE
-// ==============================================================================
+// -----------------------------------------------------------------------------
 if (app.Environment.IsDevelopment())
 {
-    // Dev only: swagger UI enabled
     app.UseSwagger();
     app.UseSwaggerUI(c =>
     {
@@ -217,7 +215,7 @@ if (app.Environment.IsDevelopment())
 }
 else
 {
-    // Opcional: solo mostrar swagger en desarrollo y staging
+    // You can keep Swagger enabled for staging if you want, but protect it in prod.
     app.UseSwagger();
     app.UseSwaggerUI(c =>
     {
@@ -245,16 +243,29 @@ app.MapGet("/api/health", () => Results.Ok(new
     environment = app.Environment.EnvironmentName
 })).WithTags("Health");
 
-// Startup Logging
+// -----------------------------------------------------------------------------
+// STARTUP LOGGING & Sanity checks
+// -----------------------------------------------------------------------------
 var logger = app.Services.GetRequiredService<ILogger<Program>>();
+
 logger.LogInformation("🚀 API Forrajeria Jovita Started");
 logger.LogInformation("📍 Environment: {Env}", app.Environment.EnvironmentName);
 
+// Read the bound PaywayOptions singleton
 var paywayCfg = app.Services.GetRequiredService<PaywayOptions>();
-var paywayEnv = paywayCfg.Environment ?? "sandbox";
-var paywayUrl = paywayEnv.ToLower() == "production" ? paywayCfg.LiveApiBaseUrl : paywayCfg.SandboxApiBaseUrl;
 
-logger.LogInformation("💳 Payway Configured - Environment: {Env}, URL: {Url}", paywayEnv, paywayUrl);
+var paywayEnv = paywayCfg.Environment ?? builder.Configuration["Payway:Environment"] ?? "sandbox";
+var isProd = paywayEnv.Equals("production", StringComparison.OrdinalIgnoreCase);
+
+var paywayUrl = isProd
+    ? (paywayCfg.LiveApiBaseUrl ?? builder.Configuration["Payway:LiveApiBaseUrl"])
+    : (paywayCfg.SandboxApiBaseUrl ?? builder.Configuration["Payway:SandboxApiBaseUrl"]);
+
+logger.LogInformation("💳 Payway Configured - Environment: {Env}, URL: {Url}", paywayEnv, paywayUrl ?? "default");
 logger.LogInformation("🔐 WebhookSecret configured: {Configured}", !string.IsNullOrEmpty(paywayCfg.WebhookSecret));
+
+// Optional: Log whether required keys exist (don't log actual secrets)
+logger.LogInformation("🔎 Payway Keys present: PublicKey={PublicPresent}, PrivateKey={PrivatePresent}",
+    !string.IsNullOrEmpty(paywayCfg.PublicApiKey), !string.IsNullOrEmpty(paywayCfg.PrivateApiKey));
 
 app.Run();

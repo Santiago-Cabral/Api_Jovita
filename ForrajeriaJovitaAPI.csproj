@@ -5,13 +5,16 @@
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<RootNamespace>ForrajeriaJovitaAPI</RootNamespace>
-	  <UserSecretsId>f6906b61-0148-4c68-b986-42314ab31c39</UserSecretsId>
-  </PropertyGroup>
+		<UserSecretsId>f6906b61-0148-4c68-b986-42314ab31c39</UserSecretsId>
+	</PropertyGroup>
 
 	<ItemGroup>
-		<!-- JWT Authentication -->
+		<!-- JWT -->
 		<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.0" />
+
+		<!-- HTTP + Polly (requiere Logging 10.x) -->
 		<PackageReference Include="Microsoft.Extensions.Http.Polly" Version="10.0.2" />
+		<PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.2" />
 
 		<!-- Swagger -->
 		<PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
@@ -19,7 +22,7 @@
 		<!-- BCrypt -->
 		<PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
 
-		<!-- Entity Framework Core SQL Server -->
+		<!-- Entity Framework -->
 		<PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.0" />
 		<PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.0">
 			<PrivateAssets>all</PrivateAssets>
@@ -28,13 +31,11 @@
 			<PrivateAssets>all</PrivateAssets>
 		</PackageReference>
 
-		<!-- JSON config -->
+		<!-- Config -->
 		<PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="9.0.0" />
 
-		<!-- Logging + Hosting + Compilers -->
-		<PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.0" />
+		<!-- MVC -->
 		<PackageReference Include="Microsoft.AspNetCore.Mvc.NewtonsoftJson" Version="9.0.0" />
-
 	</ItemGroup>
-	
+
 </Project>
