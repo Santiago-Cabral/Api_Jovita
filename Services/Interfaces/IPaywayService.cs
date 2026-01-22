@@ -8,4 +8,3 @@ namespace ForrajeriaJovitaAPI.Services.Interfaces
         Task<PaymentStatusResponse?> GetPaymentStatusAsync(string transactionId, CancellationToken cancellationToken = default);
     }
 }
-}
