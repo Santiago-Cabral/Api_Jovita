@@ -1,114 +1,145 @@
-﻿using ForrajeriaJovitaAPI.DTOs.Payway;
-using ForrajeriaJovitaAPI.Data;
-using Microsoft.EntityFrameworkCore;
+﻿using System;
+using System.Net.Http;
+using System.Text;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+using ForrajeriaJovitaAPI.DTOs.Payway;
+using ForrajeriaJovitaAPI.Models;
+using ForrajeriaJovitaAPI.Services.Interfaces;
 
-public class PaywayService : IPaywayService
+namespace ForrajeriaJovitaAPI.Services
 {
-    private readonly HttpClient _http;
-    private readonly PaywayOptions _cfg;
-    private readonly ForrajeriaContext _db;
-
-    public PaywayService(HttpClient http, PaywayOptions cfg, ForrajeriaContext db)
+    public class PaywayService : IPaywayService
     {
-        _http = http;
-        _cfg = cfg;
-        _db = db;
-    }
+        private readonly HttpClient _httpClient;
+        private readonly PaywayOptions _options;
+        private readonly ILogger<PaywayService> _logger;
 
-    // =============================
-    // CREATE CHECKOUT
-    // =============================
-    public async Task<CreateCheckoutResponse> CreateCheckoutAsync(
-        CreateCheckoutRequest request,
-        CancellationToken cancellationToken)
-    {
-        var transactionId = $"SALE_{request.SaleId}_{DateTime.UtcNow:yyyyMMddHHmmss}";
-
-        var payload = new
+        public PaywayService(
+            HttpClient httpClient,
+            PaywayOptions options,
+            ILogger<PaywayService> logger)
         {
-            site = new
-            {
-                id = _cfg.SiteId,
-                transaction_id = transactionId
-            },
-            customer = new
-            {
-                email = request.Customer.Email
-            },
-            payment = new
-            {
-                amount = (int)(request.Amount * 100),
-                currency = "ARS",
-                payment_type = "single"
-            },
-            success_url = request.ReturnUrl,
-            cancel_url = request.CancelUrl
-        };
+            _httpClient = httpClient;
+            _options = options;
+            _logger = logger;
 
-        var json = JsonSerializer.Serialize(payload);
+            _logger.LogInformation("🔧 [PAYWAY] Servicio inicializado");
+            _logger.LogInformation("   API URL: {Url}", _options.ApiUrl);
+            _logger.LogInformation("   Public Key: {Key}...",
+                _options.PublicKey?.Substring(0, Math.Min(10, _options.PublicKey.Length)));
+        }
 
-        var signature = Convert.ToBase64String(
-            HMACSHA256.HashData(
-                Encoding.UTF8.GetBytes(_cfg.PrivateKey),
-                Encoding.UTF8.GetBytes(json)
-            )
-        );
-
-        var httpRequest = new HttpRequestMessage(
-            HttpMethod.Post,
-            "/web/v1.2/forms/validate"
-        );
-
-        httpRequest.Headers.Add("apikey", _cfg.PublicKey);
-        httpRequest.Headers.Add("x-signature", signature);
-        httpRequest.Content = new StringContent(json, Encoding.UTF8, "application/json");
-
-        var response = await _http.SendAsync(httpRequest, cancellationToken);
-        var content = await response.Content.ReadAsStringAsync(cancellationToken);
-
-        if (!response.IsSuccessStatusCode)
-            throw new Exception($"Payway error {response.StatusCode}: {content}");
-
-        var validate = JsonSerializer.Deserialize<FormValidateResponse>(
-            content,
-            new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
-        ) ?? throw new Exception("Respuesta Payway inválida");
-
-        return new CreateCheckoutResponse
+        public async Task<CreateCheckoutResponse> CreateCheckoutAsync(
+            CreateCheckoutRequest request,
+            CancellationToken cancellationToken = default)
         {
-            CheckoutId = validate.Hash,
-            TransactionId = transactionId,
-            CheckoutUrl = $"https://forms.decidir.com/web/forms/{validate.Hash}?apikey={_cfg.PublicKey}"
-        };
-    }
+            try
+            {
+                _logger.LogInformation("💳 [PAYWAY] Creando checkout - Sale: {SaleId}, Amount: ${Amount}",
+                    request.SaleId, request.Amount);
 
-    // =============================
-    // GET PAYMENT STATUS (DESDE BD)
-    // =============================
-    public async Task<PaymentStatusResponse?> GetPaymentStatusAsync(
-        string transactionId,
-        CancellationToken cancellationToken)
-    {
-        var tx = await _db.PaymentTransactions
-            .AsNoTracking()
-            .FirstOrDefaultAsync(t => t.TransactionId == transactionId, cancellationToken);
+                // 1. Generar Transaction ID
+                var transactionId = $"JOV_{DateTime.UtcNow:yyyyMMddHHmmss}_{request.SaleId}_{new Random().Next(1000, 9999)}";
 
-        if (tx == null) return null;
+                // 2. Convertir a centavos
+                var amountInCents = (int)(request.Amount * 100);
 
-        return new PaymentStatusResponse
+                // 3. Preparar payload para Decidir API v2
+                var payload = new
+                {
+                    site_transaction_id = transactionId,
+                    token = "cybersource",
+                    customer = new
+                    {
+                        id = SanitizeEmail(request.Customer?.Email ?? $"customer_{request.SaleId}"),
+                        email = request.Customer?.Email ?? $"temp{request.SaleId}@forrajeriajovita.com"
+                    },
+                    payment_method_id = 1,
+                    bin = "450799",
+                    amount = amountInCents,
+                    currency = "ARS",
+                    installments = 1,
+                    description = request.Description ?? $"Pedido #{request.SaleId} - Forrajería Jovita",
+                    payment_type = "single",
+                    sub_payments = new object[] { }
+                };
+
+                var jsonPayload = JsonSerializer.Serialize(payload, new JsonSerializerOptions
+                {
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                });
+
+                _logger.LogDebug("📦 [PAYWAY] Payload: {Payload}", jsonPayload);
+
+                // 4. Crear request HTTP
+                // IMPORTANTE: Usar /api/v2/payments en lugar de /web/v1.2/forms/validate
+                var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/api/v2/payments")
+                {
+                    Content = new StringContent(jsonPayload, Encoding.UTF8, "application/json")
+                };
+
+                httpRequest.Headers.Add("apikey", _options.PublicKey);
+                httpRequest.Headers.Add("Cache-Control", "no-cache");
+
+                _logger.LogInformation("🌐 [PAYWAY] POST {Url}/api/v2/payments", _options.ApiUrl);
+
+                // 5. Enviar request
+                var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
+                var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
+
+                _logger.LogInformation("📊 [PAYWAY] Response: {Status}", (int)response.StatusCode);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogError("❌ [PAYWAY] Error: {Response}", responseContent);
+                    throw new HttpRequestException($"Decidir error {response.StatusCode}: {responseContent}");
+                }
+
+                _logger.LogDebug("📄 [PAYWAY] Response body: {Response}", responseContent);
+
+                // 6. Parsear respuesta
+                var paywayResponse = JsonSerializer.Deserialize<PaywayPaymentResponse>(
+                    responseContent,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                if (paywayResponse?.Id == null)
+                {
+                    _logger.LogError("❌ [PAYWAY] Sin Payment ID");
+                    throw new InvalidOperationException("Decidir no devolvió Payment ID válido");
+                }
+
+                // 7. Construir URL del formulario
+                // Extraer base URL sin /api/v2
+                var baseUrl = _options.ApiUrl.Replace("/api/v2", "");
+                var checkoutUrl = $"{baseUrl}/web/forms?payment_id={paywayResponse.Id}&apikey={_options.PublicKey}";
+
+                _logger.LogInformation("✅ [PAYWAY] Checkout OK - ID: {Id}", paywayResponse.Id);
+
+                return new CreateCheckoutResponse
+                {
+                    CheckoutUrl = checkoutUrl,
+                    CheckoutId = paywayResponse.Id.ToString(),
+                    TransactionId = transactionId
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ [PAYWAY] Error");
+                throw;
+            }
+        }
+
+        private string SanitizeEmail(string email)
         {
-            TransactionId = tx.TransactionId,
-            SaleId = tx.SaleId,
-            Status = tx.Status,
-            StatusDetail = tx.StatusDetail,
-            Amount = tx.Amount,
-            Currency = tx.Currency,
-            CreatedAt = tx.CreatedAt,
-            UpdatedAt = tx.UpdatedAt,
-            CompletedAt = tx.CompletedAt
-        };
+            return email
+                .Replace("@", "_at_")
+                .Replace(".", "_")
+                .Replace(" ", "_")
+                .Replace("+", "_");
+        }
     }
+    
 }
-
-
-
