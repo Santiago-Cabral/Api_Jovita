@@ -1,156 +1,98 @@
-﻿using System;
-using System.Net.Http;
+﻿using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
 using ForrajeriaJovitaAPI.DTOs.Payway;
+using ForrajeriaJovitaAPI.Models;
 using ForrajeriaJovitaAPI.Services.Interfaces;
 
-namespace ForrajeriaJovitaAPI.Services
+public class PaywayService : IPaywayService
 {
-    public class PaywayService : IPaywayService
+    private readonly HttpClient _http;
+    private readonly PaywayOptions _cfg;
+
+    public PaywayService(HttpClient http, PaywayOptions cfg)
     {
-        private readonly HttpClient _httpClient;
-        private readonly IConfiguration _configuration;
-        private readonly ILogger<PaywayService> _logger;
+        _http = http;
+        _cfg = cfg;
+    }
 
-        private readonly string _apiBaseUrl;
-        private readonly string _publicApiKey;
-        private readonly string _privateApiKey;
-        private readonly string _siteId;
-        private readonly bool _isProduction;
+    public async Task<CreateCheckoutResponse> CreateCheckoutAsync(
+        CreateCheckoutRequest request,
+        CancellationToken cancellationToken)
+    {
+        // 1️⃣ TransactionId único (Payway lo necesita)
+        var transactionId = $"SALE_{request.SaleId}_{DateTime.UtcNow:yyyyMMddHHmmss}";
 
-        public PaywayService(
-            HttpClient httpClient,
-            IConfiguration configuration,
-            ILogger<PaywayService> logger)
+        // 2️⃣ Payload EXACTO que Payway espera
+        var payload = new
         {
-            _httpClient = httpClient;
-            _configuration = configuration;
-            _logger = logger;
+            site = new
+            {
+                id = _cfg.SiteId,
+                transaction_id = transactionId
+            },
+            customer = new
+            {
+                email = request.Customer.Email
+            },
+            payment = new
+            {
+                amount = (int)(request.Amount * 100),
+                currency = "ARS",
+                payment_type = "single"
+            },
+            success_url = request.ReturnUrl,
+            cancel_url = request.CancelUrl
+        };
 
-            _isProduction = string.Equals(
-                _configuration["Payway:Environment"],
-                "production",
-                StringComparison.OrdinalIgnoreCase
+        var json = JsonSerializer.Serialize(payload);
+
+        // 3️⃣ Firma HMAC SHA256
+        var signature = Convert.ToBase64String(
+            HMACSHA256.HashData(
+                Encoding.UTF8.GetBytes(_cfg.PrivateKey),
+                Encoding.UTF8.GetBytes(json)
+            )
+        );
+
+        // 4️⃣ Request Payway
+        var httpRequest = new HttpRequestMessage(
+            HttpMethod.Post,
+            "/web/v1.2/forms/validate"
+        );
+
+        httpRequest.Headers.Add("apikey", _cfg.PublicKey);
+        httpRequest.Headers.Add("x-signature", signature);
+        httpRequest.Content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        var response = await _http.SendAsync(httpRequest, cancellationToken);
+        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException(
+                $"Payway error {response.StatusCode}: {content}"
             );
-
-            _publicApiKey = _configuration["Payway:PublicApiKey"]
-                ?? throw new InvalidOperationException("Payway:PublicApiKey no configurado");
-
-            _privateApiKey = _configuration["Payway:PrivateApiKey"]
-                ?? throw new InvalidOperationException("Payway:PrivateApiKey no configurado");
-
-            _siteId = _configuration["Payway:SiteId"]
-                ?? throw new InvalidOperationException("Payway:SiteId no configurado");
-
-            _apiBaseUrl = _isProduction
-                ? "https://live.decidir.com"
-                : "https://developers.decidir.com";
-
-            _logger.LogInformation(
-                "Payway inicializado | Env: {Env} | SiteId: {SiteId}",
-                _isProduction ? "PROD" : "SANDBOX",
-                _siteId
-            );
         }
 
-        public async Task<CreateCheckoutResponse> CreateCheckoutAsync(
-            CreateCheckoutRequest request,
-            CancellationToken cancellationToken = default)
+        // 5️⃣ Respuesta Payway
+        var validate = JsonSerializer.Deserialize<FormValidateResponse>(
+            content,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+        ) ?? throw new Exception("Respuesta Payway inválida");
+
+        // 6️⃣ URL FINAL DE REDIRECCIÓN
+        var checkoutUrl =
+            $"https://forms.decidir.com/web/forms/{validate.Hash}?apikey={_cfg.PublicKey}";
+
+        return new CreateCheckoutResponse
         {
-            var transactionId = GenerateTransactionId(request.SaleId);
-            var amountInCents = (int)(request.Amount * 100);
-
-            var payload = new
-            {
-                site = new
-                {
-                    id = _siteId,
-                    transaction_id = transactionId
-                },
-                customer = new
-                {
-                    id = $"cust_{request.SaleId}",
-                    email = request.Customer.Email
-                },
-                payment = new
-                {
-                    amount = amountInCents,
-                    currency = "ARS",
-                    payment_type = "single"
-                },
-                success_url = request.ReturnUrl
-                    ?? $"{_configuration["App:BaseUrl"]}/payments/success?saleId={request.SaleId}",
-                cancel_url = request.CancelUrl
-                    ?? $"{_configuration["App:BaseUrl"]}/payments/cancel?saleId={request.SaleId}"
-            };
-
-            var json = JsonSerializer.Serialize(payload);
-
-            var httpRequest = new HttpRequestMessage(
-                HttpMethod.Post,
-                $"{_apiBaseUrl}/web/v1.2/forms/validate")
-            {
-                Content = new StringContent(json, Encoding.UTF8, "application/json")
-            };
-
-            httpRequest.Headers.Add("apikey", _privateApiKey);
-
-            var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
-            var content = await response.Content.ReadAsStringAsync(cancellationToken);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                _logger.LogError(
-                    "Payway error {Status}: {Body}",
-                    response.StatusCode,
-                    content
-                );
-
-                throw new InvalidOperationException("Error creando checkout Payway");
-            }
-
-            var validate = JsonSerializer.Deserialize<FormValidateResponse>(
-                content,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
-            ) ?? throw new InvalidOperationException("Respuesta inválida de Payway");
-
-            var checkoutUrl =
-                $"https://forms.decidir.com/web/forms/{validate.Hash}?apikey={_publicApiKey}";
-
-            return new CreateCheckoutResponse
-            {
-                TransactionId = transactionId,
-                CheckoutId = validate.Hash,
-                CheckoutUrl = checkoutUrl
-            };
-        }
-
-        // <-- IMPLEMENTACIÓN REQUERIDA POR LA INTERFAZ
-        // Actualmente devuelve null (placeholder). Reemplazá por la llamada a Payway o DB cuando lo implementes.
-        public Task<PaymentStatusResponse?> GetPaymentStatusAsync(
-            string transactionId,
-            CancellationToken cancellationToken = default)
-        {
-            _logger.LogInformation("GetPaymentStatusAsync invoked for TransactionId: {Tx}", transactionId);
-
-            // Placeholder: no hay implementación externa todavía.
-            // Opciones futuras:
-            // - Llamar a _httpClient.GetAsync($"/payments/{transactionId}") y mapear la respuesta
-            // - Consultar PaymentTransactions en tu BD
-            return Task.FromResult<PaymentStatusResponse?>(null);
-        }
-
-        private static string GenerateTransactionId(int saleId)
-        {
-            var ts = DateTime.UtcNow.ToString("yyyyMMddHHmmss");
-            var rnd = RandomNumberGenerator.GetInt32(1000, 9999);
-            return $"JOV_{ts}_{saleId}_{rnd}";
-        }
+            CheckoutId = validate.Hash,
+            TransactionId = transactionId,
+            CheckoutUrl = checkoutUrl
+        };
     }
 }
+
+
