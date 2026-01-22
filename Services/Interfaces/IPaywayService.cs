@@ -1,4 +1,7 @@
+// Services/Interfaces/IPaywayService.cs
 using ForrajeriaJovitaAPI.DTOs.Payway;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace ForrajeriaJovitaAPI.Services.Interfaces
 {

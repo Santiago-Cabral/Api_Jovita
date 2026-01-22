@@ -1,26 +1,26 @@
+// Models/PaywayOptions.cs
 using System.ComponentModel.DataAnnotations;
 
-namespace ForrajeriaJovitaAPI
+namespace ForrajeriaJovitaAPI.Models
 {
-    /// <summary>
-    /// Configuración para Payway. Se lee desde appsettings o User Secrets.
-    /// </summary>
     public class PaywayOptions
     {
-        /// <summary> "sandbox" o "production" </summary>
-        public string? Environment { get; set; }
+        [Required]
+        public string Environment { get; set; } = "sandbox"; // "sandbox" | "production"
 
-        /// <summary> SiteId que te provee Payway (leer desde User Secrets) </summary>
-        public string? SiteId { get; set; }
+        [Required]
+        public string PublicApiKey { get; set; } = string.Empty;
 
-        public string? PublicApiKey { get; set; }
-        public string? PrivateApiKey { get; set; }
+        [Required]
+        public string PrivateApiKey { get; set; } = string.Empty;
 
-        /// <summary> Opcional: url base si necesitas sobrescribir defaults </summary>
-        public string? LiveApiBaseUrl { get; set; }
-        public string? SandboxApiBaseUrl { get; set; }
+        // SiteId viene de User Secrets (es string porque Payway lo maneja así)
+        [Required]
+        public string SiteId { get; set; } = string.Empty;
 
-        /// <summary> Secret para validación de webhooks (opcional pero recomendado) </summary>
+        public string? SandboxApiBaseUrl { get; set; } = "https://developers.decidir.com";
+        public string? LiveApiBaseUrl { get; set; } = "https://live.decidir.com";
+
         public string? WebhookSecret { get; set; }
     }
 }
