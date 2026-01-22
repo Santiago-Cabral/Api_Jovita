@@ -1,10 +1,4 @@
-﻿using System.Net.Http;
-using System.Security.Cryptography;
-using System.Text;
-using System.Text.Json;
-using ForrajeriaJovitaAPI.DTOs.Payway;
-using ForrajeriaJovitaAPI.Models;
-using ForrajeriaJovitaAPI.Services.Interfaces;
+﻿using ForrajeriaJovitaAPI.DTOs.Payway;
 using ForrajeriaJovitaAPI.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -21,9 +15,9 @@ public class PaywayService : IPaywayService
         _db = db;
     }
 
-    // ==============================
+    // =============================
     // CREATE CHECKOUT
-    // ==============================
+    // =============================
     public async Task<CreateCheckoutResponse> CreateCheckoutAsync(
         CreateCheckoutRequest request,
         CancellationToken cancellationToken)
@@ -73,32 +67,25 @@ public class PaywayService : IPaywayService
         var content = await response.Content.ReadAsStringAsync(cancellationToken);
 
         if (!response.IsSuccessStatusCode)
-        {
-            throw new InvalidOperationException(
-                $"Payway error {response.StatusCode}: {content}"
-            );
-        }
+            throw new Exception($"Payway error {response.StatusCode}: {content}");
 
         var validate = JsonSerializer.Deserialize<FormValidateResponse>(
             content,
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
         ) ?? throw new Exception("Respuesta Payway inválida");
 
-        var checkoutUrl =
-            $"https://forms.decidir.com/web/forms/{validate.Hash}?apikey={_cfg.PublicKey}";
-
         return new CreateCheckoutResponse
         {
             CheckoutId = validate.Hash,
             TransactionId = transactionId,
-            CheckoutUrl = checkoutUrl
+            CheckoutUrl = $"https://forms.decidir.com/web/forms/{validate.Hash}?apikey={_cfg.PublicKey}"
         };
     }
 
-    // ==============================
-    // GET PAYMENT STATUS (FROM DB)
-    // ==============================
-    public async Task<PaywayPaymentStatusResponse> GetPaymentStatusAsync(
+    // =============================
+    // GET PAYMENT STATUS (DESDE BD)
+    // =============================
+    public async Task<PaymentStatusResponse?> GetPaymentStatusAsync(
         string transactionId,
         CancellationToken cancellationToken)
     {
@@ -106,12 +93,9 @@ public class PaywayService : IPaywayService
             .AsNoTracking()
             .FirstOrDefaultAsync(t => t.TransactionId == transactionId, cancellationToken);
 
-        if (tx == null)
-        {
-            throw new KeyNotFoundException("Transacción no encontrada");
-        }
+        if (tx == null) return null;
 
-        return new PaywayPaymentStatusResponse
+        return new PaymentStatusResponse
         {
             TransactionId = tx.TransactionId,
             SaleId = tx.SaleId,
@@ -125,5 +109,6 @@ public class PaywayService : IPaywayService
         };
     }
 }
+
 
 

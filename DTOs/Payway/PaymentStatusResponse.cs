@@ -1,15 +1,15 @@
-// File: DTOs/Payway/PaymentStatusResponse.cs
-using System;
-
 namespace ForrajeriaJovitaAPI.DTOs.Payway
 {
     public class PaymentStatusResponse
     {
-        public string? TransactionId { get; set; }
-        public string? Status { get; set; } // e.g., "pending", "paid", "canceled"
+        public string TransactionId { get; set; } = string.Empty;
+        public int SaleId { get; set; }
+        public string Status { get; set; } = string.Empty;
+        public string? StatusDetail { get; set; }
         public decimal Amount { get; set; }
-        public string? Currency { get; set; }
-        public DateTime? CreatedAt { get; set; }
-        public string? RawResponse { get; set; } // opcional para debugging
+        public string Currency { get; set; } = "ARS";
+        public DateTime CreatedAt { get; set; }
+        public DateTime? UpdatedAt { get; set; }
+        public DateTime? CompletedAt { get; set; }
     }
 }
