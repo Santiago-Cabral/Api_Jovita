@@ -13,7 +13,9 @@ namespace ForrajeriaJovitaAPI.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
+    [AllowAnonymous] // 👈 ESTA LÍNEA
     public class ProductsController : ControllerBase
+
     {
         private readonly ForrajeriaContext _context;
         private readonly IStockService _stockService;
