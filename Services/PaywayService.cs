@@ -17,110 +17,107 @@ namespace ForrajeriaJovitaAPI.Services
         private readonly PaywayOptions _options;
         private readonly ILogger<PaywayService> _logger;
 
-        public PaywayService(
-            HttpClient httpClient,
-            PaywayOptions options,
-            ILogger<PaywayService> logger)
+        public PaywayService(HttpClient httpClient, PaywayOptions options, ILogger<PaywayService> logger)
         {
             _httpClient = httpClient;
             _options = options;
             _logger = logger;
+            _logger.LogInformation("🔧 [PAYWAY] Servicio inicializado. BaseAddress={Base}", _httpClient.BaseAddress);
         }
 
-        // ======================================================
-        // CREATE CHECKOUT
-        // ======================================================
-        public async Task<CreateCheckoutResponse> CreateCheckoutAsync(
-            CreateCheckoutRequest request,
-            CancellationToken cancellationToken = default)
+        public async Task<CreateCheckoutResponse> CreateCheckoutAsync(CreateCheckoutRequest request, CancellationToken cancellationToken = default)
         {
-            var transactionId = $"JOV_{DateTime.UtcNow:yyyyMMddHHmmss}_{request.SaleId}";
-            var amountInCents = (int)(request.Amount * 100);
-
-            var payload = new
+            try
             {
-                site_transaction_id = transactionId,
-                token = "cybersource",
-                customer = new
+                _logger.LogInformation("💳 [PAYWAY] Creando checkout - Sale:{Sale} Amount:{Amount}", request.SaleId, request.Amount);
+
+                var transactionId = $"JOV_{DateTime.UtcNow:yyyyMMddHHmmss}_{request.SaleId}_{new Random().Next(1000, 9999)}";
+                var amountInCents = (int)(request.Amount * 100);
+
+                var payload = new
                 {
-                    id = SanitizeEmail(request.Customer.Email),
-                    email = request.Customer.Email
-                },
-                payment_method_id = 1,
-                bin = "450799",
-                amount = amountInCents,
-                currency = "ARS",
-                installments = 1,
-                description = request.Description,
-                payment_type = "single",
-                sub_payments = Array.Empty<object>()
-            };
+                    site_transaction_id = transactionId,
+                    token = "cybersource",
+                    customer = new
+                    {
+                        id = SanitizeEmail(request.Customer?.Email ?? $"cust{request.SaleId}"),
+                        email = request.Customer?.Email ?? $"temp{request.SaleId}@example.com"
+                    },
+                    payment_method_id = 1,
+                    bin = "450799",
+                    amount = amountInCents,
+                    currency = "ARS",
+                    installments = 1,
+                    description = request.Description ?? $"Pedido #{request.SaleId}",
+                    payment_type = "single",
+                    sub_payments = Array.Empty<object>()
+                };
 
-            var json = JsonSerializer.Serialize(payload);
-            var content = new StringContent(json, Encoding.UTF8, "application/json");
+                var jsonPayload = JsonSerializer.Serialize(payload, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+                var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
 
-            var httpRequest = new HttpRequestMessage(HttpMethod.Post, "payments")
-            {
-                Content = content
-            };
+                // Usar ruta RELATIVA porque BaseAddress fue seteada en AddHttpClient
+                var response = await _httpClient.PostAsync("payments", content, cancellationToken);
+                var responseText = await response.Content.ReadAsStringAsync(cancellationToken);
 
-            httpRequest.Headers.Add("apikey", _options.PublicKey);
+                _logger.LogDebug("📊 [PAYWAY] Status: {Status}. Body: {Body}", (int)response.StatusCode, responseText);
 
-            var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
-            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                if (!response.IsSuccessStatusCode)
+                {
+                    // Loggear detalle para debugging (no claves)
+                    _logger.LogError("❌ [PAYWAY] Error creando checkout. Status: {Status}. Body: {Body}", (int)response.StatusCode, responseText);
+                    throw new InvalidOperationException("Error al crear el checkout de pago");
+                }
 
-            if (!response.IsSuccessStatusCode)
-            {
-                _logger.LogError("PAYWAY ERROR: {Body}", body);
-                throw new Exception("Error al crear el checkout de pago");
+                var paywayResp = JsonSerializer.Deserialize<PaywayPaymentResponse>(responseText, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                if (paywayResp == null || paywayResp.Id == null)
+                {
+                    _logger.LogError("❌ [PAYWAY] Respuesta inválida de Payway: {Body}", responseText);
+                    throw new InvalidOperationException("Respuesta inválida de Payway");
+                }
+
+                var baseUrl = _options.ApiUrl.Replace("/api/v2", "").TrimEnd('/');
+                var checkoutUrl = $"{baseUrl}/web/forms?payment_id={paywayResp.Id}&apikey={_options.PublicKey}";
+
+                return new CreateCheckoutResponse
+                {
+                    CheckoutId = paywayResp.Id.ToString(),
+                    CheckoutUrl = checkoutUrl,
+                    TransactionId = transactionId
+                };
             }
-
-            var paywayResponse = JsonSerializer.Deserialize<PaywayPaymentResponse>(
-                body,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
-            );
-
-            if (paywayResponse == null || paywayResponse.Id == null)
-                throw new Exception("Respuesta inválida de Payway");
-
-            var checkoutUrl =
-                $"{_options.ApiUrl.Replace("/api/v2", "")}/web/forms" +
-                $"?payment_id={paywayResponse.Id}&apikey={_options.PublicKey}";
-
-            return new CreateCheckoutResponse
+            catch (HttpRequestException hx)
             {
-                CheckoutId = paywayResponse.Id.ToString(),
-                CheckoutUrl = checkoutUrl,
-                TransactionId = transactionId
-            };
+                _logger.LogError(hx, "❌ [PAYWAY] HttpRequestException creando checkout");
+                throw new InvalidOperationException("Error interno del servidor: problema de conexión con Payway");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ [PAYWAY] Excepción creando checkout");
+                throw;
+            }
         }
 
-        // ======================================================
-        // PAYMENT STATUS
-        // ======================================================
-        public async Task<PaymentStatusResponse?> GetPaymentStatusAsync(
-            string paymentId,
-            CancellationToken cancellationToken = default)
+        public async Task<PaymentStatusResponse?> GetPaymentStatusAsync(string paymentId, CancellationToken cancellationToken = default)
         {
-            var response = await _httpClient.GetAsync(
-                $"payments/{paymentId}",
-                cancellationToken
-            );
-
-            if (!response.IsSuccessStatusCode)
+            try
+            {
+                var resp = await _httpClient.GetAsync($"payments/{paymentId}", cancellationToken);
+                if (!resp.IsSuccessStatusCode) return null;
+                var body = await resp.Content.ReadAsStringAsync(cancellationToken);
+                return JsonSerializer.Deserialize<PaymentStatusResponse>(body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error obteniendo estado de pago");
                 return null;
-
-            var body = await response.Content.ReadAsStringAsync(cancellationToken);
-
-            return JsonSerializer.Deserialize<PaymentStatusResponse>(
-                body,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
-            );
+            }
         }
 
         private string SanitizeEmail(string email)
         {
-            return email
+            return (email ?? string.Empty)
                 .Replace("@", "_at_")
                 .Replace(".", "_")
                 .Replace("+", "_")
