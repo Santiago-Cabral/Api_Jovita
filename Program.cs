@@ -1,11 +1,14 @@
-﻿using System.Text;
+﻿using System;
+using System.Linq;
 using System.Net.Http.Headers;
+using System.Text;
 using ForrajeriaJovitaAPI.Data;
 using ForrajeriaJovitaAPI.Models;
 using ForrajeriaJovitaAPI.Security;
 using ForrajeriaJovitaAPI.Services;
 using ForrajeriaJovitaAPI.Services.Interfaces;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -13,147 +16,158 @@ using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ========================
-// CONFIG PAYWAY (UserSecrets / Render Env)
-// ========================
-builder.Services.Configure<PaywayOptions>(
-    builder.Configuration.GetSection("Payway")
-);
+// -----------------------------
+// CONFIG: Payway options from appsettings / user secrets
+// -----------------------------
+builder.Services.Configure<PaywayOptions>(builder.Configuration.GetSection("Payway"));
+builder.Services.AddSingleton(sp => sp.GetRequiredService<IOptions<PaywayOptions>>().Value);
 
-builder.Services.AddSingleton(sp =>
-    sp.GetRequiredService<IOptions<PaywayOptions>>().Value
-);
-
-// ========================
+// -----------------------------
 // DATABASE
-// ========================
+// -----------------------------
 builder.Services.AddDbContext<ForrajeriaContext>(options =>
-    options.UseSqlServer(
-        builder.Configuration.GetConnectionString("DefaultConnection")
-    )
-);
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// ========================
-// HTTP CLIENT PAYWAY (URL REAL)
-// ========================
+// -----------------------------
+// HTTP CLIENT for IPaywayService
+// -----------------------------
 builder.Services.AddHttpClient<IPaywayService, PaywayService>((sp, client) =>
 {
-    client.BaseAddress = new Uri("https://developers.decidir.com");
+    var cfg = sp.GetRequiredService<PaywayOptions>();
+    if (string.IsNullOrEmpty(cfg.ApiUrl))
+        throw new Exception("Payway:ApiUrl not configured");
+
+    // Use the ApiUrl as BaseAddress (caller MUST ensure it's correct)
+    client.BaseAddress = new Uri(cfg.ApiUrl);
     client.Timeout = TimeSpan.FromSeconds(45);
-    client.DefaultRequestHeaders.Accept.Add(
-        new MediaTypeWithQualityHeaderValue("application/json")
-    );
-});
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("ForrajeriaJovitaAPI/1.0");
+    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+}).SetHandlerLifetime(TimeSpan.FromMinutes(5));
 
-// ========================
-// JWT
-// ========================
-var jwtKey = builder.Configuration["Jwt:Key"]
-    ?? throw new Exception("Jwt:Key missing");
-var jwtIssuer = builder.Configuration["Jwt:Issuer"]
-    ?? throw new Exception("Jwt:Issuer missing");
-var jwtAudience = builder.Configuration["Jwt:Audience"]
-    ?? throw new Exception("Jwt:Audience missing");
+// -----------------------------
+// AUTH (JWT)
+// -----------------------------
+var jwtKey = builder.Configuration["Jwt:Key"] ?? throw new Exception("Jwt:Key missing");
+var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? throw new Exception("Jwt:Issuer missing");
+var jwtAudience = builder.Configuration["Jwt:Audience"] ?? throw new Exception("Jwt:Audience missing");
 
-builder.Services
-.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-.AddJwtBearer(opt =>
-{
-    opt.RequireHttpsMetadata = true;
-    opt.TokenValidationParameters = new TokenValidationParameters
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
     {
-        ValidateIssuer = true,
-        ValidateAudience = true,
-        ValidateIssuerSigningKey = true,
-        ValidateLifetime = true,
-        ValidIssuer = jwtIssuer,
-        ValidAudience = jwtAudience,
-        IssuerSigningKey = new SymmetricSecurityKey(
-            Encoding.UTF8.GetBytes(jwtKey)
-        )
-    };
-});
+        options.RequireHttpsMetadata = true;
+        options.SaveToken = true;
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateIssuerSigningKey = true,
+            ValidateLifetime = true,
+            ValidIssuer = jwtIssuer,
+            ValidAudience = jwtAudience,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
+            ClockSkew = TimeSpan.Zero
+        };
+    });
 
-// ========================
-// SERVICES
-// ========================
+// -----------------------------
+// APP SERVICES
+// -----------------------------
 builder.Services.AddScoped<IPaywayService, PaywayService>();
 builder.Services.AddScoped<IVentaService, VentaService>();
 builder.Services.AddScoped<ICheckoutService, CheckoutService>();
-builder.Services.AddScoped<IAuthService, AuthService>();
-builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
-builder.Services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();
+// add other services as needed...
 
-// ========================
-// CONTROLLERS + JSON
-// ========================
 builder.Services.AddControllers()
-.AddJsonOptions(opt =>
-{
-    opt.JsonSerializerOptions.PropertyNamingPolicy = null;
-    opt.JsonSerializerOptions.WriteIndented = true;
-});
-
-// ========================
-// CORS (EL PROBLEMA REAL)
-// ========================
-builder.Services.AddCors(opt =>
-{
-    opt.AddPolicy("AllowFrontend", policy =>
+    .AddJsonOptions(o =>
     {
-        policy
-            .WithOrigins(
-                "http://localhost:5173",
-                "http://localhost:3000",
-                "https://forrajeria-jovita.vercel.app"
-            )
-            .AllowAnyHeader()
-            .AllowAnyMethod();
+        o.JsonSerializerOptions.PropertyNamingPolicy = null;
+        o.JsonSerializerOptions.WriteIndented = true;
     });
-});
 
-// ========================
-// SWAGGER
-// ========================
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
-    c.SwaggerDoc("v1", new OpenApiInfo
-    {
-        Title = "ForrajeriaJovitaAPI",
-        Version = "v1"
-    });
+    c.SwaggerDoc("v1", new OpenApiInfo { Title = "ForrajeriaJovitaAPI", Version = "v1" });
+});
 
-    var jwtScheme = new OpenApiSecurityScheme
-    {
-        Name = "Authorization",
-        Type = SecuritySchemeType.Http,
-        Scheme = "bearer",
-        BearerFormat = "JWT",
-        In = ParameterLocation.Header,
-        Description = "Bearer {token}"
-    };
+// -----------------------------
+// CORS: allow only specific origins (no wildcard when credentials are allowed)
+// -----------------------------
+var allowedOrigins = new[]
+{
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "https://forrajeria-jovita.vercel.app"
+};
 
-    c.AddSecurityDefinition("Bearer", jwtScheme);
-    c.AddSecurityRequirement(new OpenApiSecurityRequirement
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowFrontend", policy =>
     {
-        { jwtScheme, Array.Empty<string>() }
+        policy.WithOrigins(allowedOrigins)
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials(); // si no usás credenciales (cookies/auth headers) podés quitar AllowCredentials()
     });
 });
 
+// -----------------------------
+// BUILD
+// -----------------------------
 var app = builder.Build();
 
-// ========================
-// MIDDLEWARE ORDER (IMPORTANTE)
-// ========================
-app.UseSwagger();
-app.UseSwaggerUI();
+// -----------------------------
+// GLOBAL EXCEPTION HANDLER que añade headers CORS cuando hay errores
+// -----------------------------
+app.UseExceptionHandler(errApp =>
+{
+    errApp.Run(async context =>
+    {
+        var exFeature = context.Features.Get<IExceptionHandlerPathFeature>();
+        var err = exFeature?.Error;
+
+        // Reproducible: respetar origen si está en allowedOrigins para evitar wildcard con AllowCredentials
+        var origin = context.Request.Headers["Origin"].FirstOrDefault();
+        if (!string.IsNullOrEmpty(origin) && allowedOrigins.Contains(origin, StringComparer.OrdinalIgnoreCase))
+        {
+            context.Response.Headers["Access-Control-Allow-Origin"] = origin;
+            context.Response.Headers["Vary"] = "Origin";
+            context.Response.Headers["Access-Control-Allow-Credentials"] = "true";
+        }
+
+        context.Response.ContentType = "application/json";
+        context.Response.StatusCode = 500;
+
+        var payload = new
+        {
+            error = "Internal Server Error",
+            message = err?.Message,
+            detail = err?.InnerException?.Message
+        };
+
+        var json = System.Text.Json.JsonSerializer.Serialize(payload);
+        await context.Response.WriteAsync(json);
+    });
+});
+
+// -----------------------------
+// MIDDLEWARE ORDER: routing -> cors -> auth -> endpoints
+// -----------------------------
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI(c => { c.SwaggerEndpoint("/swagger/v1/swagger.json", "v1"); });
+}
+else
+{
+    app.UseSwagger();
+    app.UseSwaggerUI(c => { c.SwaggerEndpoint("/swagger/v1/swagger.json", "v1"); });
+}
 
 app.UseHttpsRedirection();
-
 app.UseRouting();
 
-// 👉 CORS ANTES DE AUTH
+// IMPORTANT: CORS must be applied before Authentication/Authorization and before endpoints
 app.UseCors("AllowFrontend");
 
 app.UseAuthentication();
@@ -161,25 +175,17 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-// ========================
-// HEALTH CHECK
-// ========================
-app.MapGet("/api/health", () => Results.Ok(new
-{
-    status = "OK",
-    service = "Forrajeria Jovita API",
-    time = DateTime.UtcNow
-}));
+// -----------------------------
+// LOG STARTUP & PAYWAY INFO
+// -----------------------------
+var logger = app.Services.GetRequiredService<ILogger<Program>>();
+logger.LogInformation("🚀 ForrajeriaJovitaAPI started. Env: {Env}", app.Environment.EnvironmentName);
 
-// ========================
-// STARTUP LOG
-// ========================
-var payway = app.Services.GetRequiredService<PaywayOptions>();
-app.Logger.LogInformation("🚀 API iniciada");
-app.Logger.LogInformation("💳 Payway Keys | Public:{Pub} Private:{Priv} Site:{Site}",
-    !string.IsNullOrEmpty(payway.PublicKey),
-    !string.IsNullOrEmpty(payway.PrivateKey),
-    !string.IsNullOrEmpty(payway.SiteId)
-);
+var paywayOpts = app.Services.GetRequiredService<PaywayOptions>();
+logger.LogInformation("💳 Payway ApiUrl: {Url}", paywayOpts.ApiUrl);
+logger.LogInformation("🔑 Keys present: Public={Pub} Private={Priv} Site={Site}",
+    !string.IsNullOrEmpty(paywayOpts.PublicKey),
+    !string.IsNullOrEmpty(paywayOpts.PrivateKey),
+    !string.IsNullOrEmpty(paywayOpts.SiteId));
 
 app.Run();
