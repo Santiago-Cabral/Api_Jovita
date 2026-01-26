@@ -19,9 +19,10 @@ namespace ForrajeriaJovitaAPI.Services
 
         public PaywayService(HttpClient httpClient, PaywayOptions options, ILogger<PaywayService> logger)
         {
-            _httpClient = httpClient;
-            _options = options;
-            _logger = logger;
+            _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+            _options = options ?? throw new ArgumentNullException(nameof(options));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+
             _logger.LogInformation("🔧 [PAYWAY] Servicio inicializado. BaseAddress={Base}", _httpClient.BaseAddress);
         }
 
@@ -56,16 +57,34 @@ namespace ForrajeriaJovitaAPI.Services
                 var jsonPayload = JsonSerializer.Serialize(payload, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
                 var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
 
-                // Usar ruta RELATIVA porque BaseAddress fue seteada en AddHttpClient
-                var response = await _httpClient.PostAsync("payments", content, cancellationToken);
+                // Construimos HttpRequestMessage y añadimos cabecera apikey (por petición)
+                var httpRequest = new HttpRequestMessage(HttpMethod.Post, "payments")
+                {
+                    Content = content
+                };
+
+                if (string.IsNullOrWhiteSpace(_options.PublicKey))
+                {
+                    _logger.LogError("❌ [PAYWAY] PublicKey no configurada en PaywayOptions.");
+                    throw new InvalidOperationException("Configuración Payway inválida");
+                }
+
+                httpRequest.Headers.Remove("apikey");
+                httpRequest.Headers.Add("apikey", _options.PublicKey);
+
+                _logger.LogDebug("📦 [PAYWAY] Payload enviado: {Payload}", jsonPayload);
+                _logger.LogInformation("🌐 [PAYWAY] POST {Url} (relative to BaseAddress)", "payments");
+
+                var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
                 var responseText = await response.Content.ReadAsStringAsync(cancellationToken);
 
+                // Loguear siempre el body para depuración (no claves secretas)
                 _logger.LogDebug("📊 [PAYWAY] Status: {Status}. Body: {Body}", (int)response.StatusCode, responseText);
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    // Loggear detalle para debugging (no claves)
                     _logger.LogError("❌ [PAYWAY] Error creando checkout. Status: {Status}. Body: {Body}", (int)response.StatusCode, responseText);
+                    // devolvemos error genérico al frontend (el detalle queda en logs)
                     throw new InvalidOperationException("Error al crear el checkout de pago");
                 }
 
@@ -77,8 +96,10 @@ namespace ForrajeriaJovitaAPI.Services
                     throw new InvalidOperationException("Respuesta inválida de Payway");
                 }
 
-                var baseUrl = _options.ApiUrl.Replace("/api/v2", "").TrimEnd('/');
+                var baseUrl = _options.ApiUrl?.Replace("/api/v2", "").TrimEnd('/') ?? _httpClient.BaseAddress?.ToString().TrimEnd('/') ?? "";
                 var checkoutUrl = $"{baseUrl}/web/forms?payment_id={paywayResp.Id}&apikey={_options.PublicKey}";
+
+                _logger.LogInformation("✅ [PAYWAY] Checkout OK - ID: {Id}, URL: {Url}", paywayResp.Id, checkoutUrl);
 
                 return new CreateCheckoutResponse
                 {
@@ -103,7 +124,11 @@ namespace ForrajeriaJovitaAPI.Services
         {
             try
             {
-                var resp = await _httpClient.GetAsync($"payments/{paymentId}", cancellationToken);
+                var request = new HttpRequestMessage(HttpMethod.Get, $"payments/{paymentId}");
+                request.Headers.Remove("apikey");
+                request.Headers.Add("apikey", _options.PublicKey);
+
+                var resp = await _httpClient.SendAsync(request, cancellationToken);
                 if (!resp.IsSuccessStatusCode) return null;
                 var body = await resp.Content.ReadAsStringAsync(cancellationToken);
                 return JsonSerializer.Deserialize<PaymentStatusResponse>(body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
@@ -125,3 +150,4 @@ namespace ForrajeriaJovitaAPI.Services
         }
     }
 }
+
