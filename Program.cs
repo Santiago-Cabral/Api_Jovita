@@ -11,6 +11,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.HttpOverrides;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -24,14 +25,12 @@ builder.Services.AddDbContext<ForrajeriaContext>(options =>
 );
 
 // -------------------- HTTP CLIENT (typed) for Payway --------------------
-// Use a single registration via AddHttpClient<TService, TImpl>() so the HttpClient BaseAddress is set.
 builder.Services.AddHttpClient<IPaywayService, PaywayService>((sp, client) =>
 {
     var cfg = sp.GetRequiredService<PaywayOptions>();
     if (string.IsNullOrWhiteSpace(cfg.ApiUrl))
         throw new Exception("Payway ApiUrl not configured in configuration (Payway:ApiUrl).");
 
-    // Ensure trailing slash to avoid invalid URI issues
     var baseUrl = cfg.ApiUrl.EndsWith("/") ? cfg.ApiUrl : cfg.ApiUrl + "/";
     client.BaseAddress = new Uri(baseUrl);
     client.Timeout = TimeSpan.FromSeconds(45);
@@ -59,11 +58,10 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
-// -------------------- App services (keep existing ones) --------------------
-// Do NOT register IPaywayService again (AddHttpClient already did it).
+// -------------------- App services --------------------
 builder.Services.AddScoped<IVentaService, VentaService>();
 builder.Services.AddScoped<ICheckoutService, CheckoutService>();
-builder.Services.AddScoped<IStockService, StockService>(); // si tenés este servicio; ajustá si el nombre es otro
+builder.Services.AddScoped<IStockService, StockService>();
 
 // -------------------- MVC / JSON / Swagger --------------------
 builder.Services.AddControllers()
@@ -79,8 +77,15 @@ builder.Services.AddSwaggerGen(c =>
     c.SwaggerDoc("v1", new OpenApiInfo { Title = "ForrajeriaJovitaAPI", Version = "v1" });
 });
 
+// -------------------- FORWARDED HEADERS (important behind proxies like Render) --------------------
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    // optionally add known proxies/networks if you want to lock it down
+});
+
 // -------------------- CORS --------------------
-// Permití tus frontends; en producción preferí restringir.
+// Allow specific origins. If usás cookies, necesitás AllowCredentials.
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
@@ -90,7 +95,8 @@ builder.Services.AddCors(options =>
                 "https://forrajeria-jovita.vercel.app"
             )
             .AllowAnyHeader()
-            .AllowAnyMethod();
+            .AllowAnyMethod()
+            .AllowCredentials(); // si no usás credenciales, podés quitar esto
     });
 });
 
@@ -102,7 +108,20 @@ app.UseSwaggerUI();
 
 app.UseHttpsRedirection();
 
+// Forward headers *before* anything that depends on scheme/origin
+app.UseForwardedHeaders();
+
+// Routing before CORS for endpoint routing model
 app.UseRouting();
+
+// Logging middleware to inspect incoming Origin and Method (helps diagnosticar)
+app.Use(async (context, next) =>
+{
+    var origin = context.Request.Headers["Origin"].ToString();
+    var method = context.Request.Method;
+    app.Logger.LogInformation("Incoming request: {Method} {Path} Origin={Origin}", method, context.Request.Path, string.IsNullOrEmpty(origin) ? "(none)" : origin);
+    await next();
+});
 
 // IMPORTANT: CORS BEFORE auth and endpoints
 app.UseCors("AllowFrontend");
@@ -130,3 +149,4 @@ catch (Exception ex)
 }
 
 app.Run();
+
