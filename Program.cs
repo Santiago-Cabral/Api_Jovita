@@ -59,6 +59,14 @@ var jwtIssuer = builder.Configuration["Jwt:Issuer"]
 var jwtAudience = builder.Configuration["Jwt:Audience"]
     ?? throw new Exception("Jwt:Audience missing");
 
+// ⭐ REGISTRO DE JwtSettings (CRÍTICO)
+builder.Services.AddSingleton(new JwtSettings
+{
+    Key = jwtKey,
+    Issuer = jwtIssuer,
+    Audience = jwtAudience
+});
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -123,7 +131,8 @@ builder.Services.AddCors(options =>
                 "https://forrajeria-jovita.vercel.app"
             )
             .AllowAnyHeader()
-            .AllowAnyMethod();
+            .AllowAnyMethod()
+            .AllowCredentials(); // ⭐ Agregado para auth
     });
 });
 
@@ -148,7 +157,8 @@ var app = builder.Build();
 app.UseSwagger();
 app.UseSwaggerUI();
 
-app.UseHttpsRedirection();
+// ⭐ Comentado para Render (Render maneja HTTPS)
+// app.UseHttpsRedirection();
 
 app.UseForwardedHeaders();
 
@@ -172,5 +182,3 @@ try
 catch { }
 
 app.Run();
-
-
