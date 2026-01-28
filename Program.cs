@@ -19,22 +19,29 @@ var builder = WebApplication.CreateBuilder(args);
 // DB
 // =====================================================
 builder.Services.AddDbContext<ForrajeriaContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"))
+    options.UseSqlServer(
+        builder.Configuration.GetConnectionString("DefaultConnection"))
 );
 
 // =====================================================
-// Payway
+// PAYWAY
 // =====================================================
-builder.Services.Configure<PaywayOptions>(builder.Configuration.GetSection("Payway"));
-builder.Services.AddSingleton(sp => sp.GetRequiredService<IOptions<PaywayOptions>>().Value);
+builder.Services.Configure<PaywayOptions>(
+    builder.Configuration.GetSection("Payway"));
+
+builder.Services.AddSingleton(sp =>
+    sp.GetRequiredService<IOptions<PaywayOptions>>().Value);
 
 builder.Services.AddHttpClient<IPaywayService, PaywayService>((sp, client) =>
 {
     var cfg = sp.GetRequiredService<PaywayOptions>();
-    if (string.IsNullOrWhiteSpace(cfg.ApiUrl))
-        throw new Exception("Payway ApiUrl not configured.");
 
-    client.BaseAddress = new Uri(cfg.ApiUrl.EndsWith("/") ? cfg.ApiUrl : cfg.ApiUrl + "/");
+    if (string.IsNullOrWhiteSpace(cfg.ApiUrl))
+        throw new Exception("Payway ApiUrl not configured");
+
+    client.BaseAddress = new Uri(
+        cfg.ApiUrl.EndsWith("/") ? cfg.ApiUrl : cfg.ApiUrl + "/");
+
     client.Timeout = TimeSpan.FromSeconds(45);
     client.DefaultRequestHeaders.Accept.Add(
         new MediaTypeWithQualityHeaderValue("application/json"));
@@ -43,9 +50,14 @@ builder.Services.AddHttpClient<IPaywayService, PaywayService>((sp, client) =>
 // =====================================================
 // JWT
 // =====================================================
-var jwtKey = builder.Configuration["Jwt:Key"] ?? throw new Exception("Jwt:Key missing");
-var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? throw new Exception("Jwt:Issuer missing");
-var jwtAudience = builder.Configuration["Jwt:Audience"] ?? throw new Exception("Jwt:Audience missing");
+var jwtKey = builder.Configuration["Jwt:Key"]
+    ?? throw new Exception("Jwt:Key missing");
+
+var jwtIssuer = builder.Configuration["Jwt:Issuer"]
+    ?? throw new Exception("Jwt:Issuer missing");
+
+var jwtAudience = builder.Configuration["Jwt:Audience"]
+    ?? throw new Exception("Jwt:Audience missing");
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -65,10 +77,10 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 
 // =====================================================
-// SERVICES (DI – ESTO ERA EL PROBLEMA)
+// DEPENDENCY INJECTION (CRÍTICO)
 // =====================================================
 builder.Services.AddScoped<IAuthService, AuthService>();
-builder.Services.AddScoped<IPasswordHasher, PasswordHasher>();
+builder.Services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();
 builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
 
 builder.Services.AddScoped<IVentaService, VentaService>();
@@ -76,7 +88,7 @@ builder.Services.AddScoped<ICheckoutService, CheckoutService>();
 builder.Services.AddScoped<IStockService, StockService>();
 
 // =====================================================
-// Controllers / JSON
+// CONTROLLERS / JSON
 // =====================================================
 builder.Services.AddControllers()
     .AddJsonOptions(opts =>
@@ -87,7 +99,7 @@ builder.Services.AddControllers()
     });
 
 // =====================================================
-// Swagger
+// SWAGGER
 // =====================================================
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
@@ -116,7 +128,7 @@ builder.Services.AddCors(options =>
 });
 
 // =====================================================
-// Forwarded Headers (Render)
+// FORWARDED HEADERS (RENDER)
 // =====================================================
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
@@ -150,7 +162,7 @@ app.UseAuthorization();
 app.MapControllers();
 
 // =====================================================
-// STARTUP LOGS
+// STARTUP LOG
 // =====================================================
 try
 {
