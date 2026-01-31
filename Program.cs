@@ -88,8 +88,11 @@ builder.Services.AddScoped<IVentaService, VentaService>();
 builder.Services.AddScoped<ICheckoutService, CheckoutService>();
 builder.Services.AddScoped<IStockService, StockService>();
 
+// <-- LÍNEA AGREGADA: registro del servicio de Branches
+builder.Services.AddScoped<IBranchService, BranchService>();
+
 // Si tenés implementaciones, registralas. Si no, registra stubs temporales.
-// Asegurate de que ClientAccountService y CategoryService existan y compilen.
+// Asegurate de que ClientAccountService and CategoryService existan y compilen.
 builder.Services.AddScoped<IClientAccountService, ClientAccountService>();
 builder.Services.AddScoped<ICategoryService, CategoryService>();
 
@@ -214,3 +217,4 @@ try
 catch { }
 
 app.Run();
+
