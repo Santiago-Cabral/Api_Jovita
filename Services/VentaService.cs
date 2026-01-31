@@ -1,7 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
+﻿}
 using Microsoft.EntityFrameworkCore;
 using ForrajeriaJovitaAPI.Data;
 using ForrajeriaJovitaAPI.DTOs;
@@ -13,19 +10,22 @@ namespace ForrajeriaJovitaAPI.Services
     {
         private readonly ForrajeriaContext _context;
 
+        private const int CASA_CENTRAL_BRANCH_ID = 1;
+
         public VentaService(ForrajeriaContext context)
         {
             _context = context;
         }
 
+        // =====================================================
+        // GET ALL
+        // =====================================================
         public async Task<IEnumerable<SaleDto>> GetAllSalesAsync(
             DateTime? startDate = null,
             DateTime? endDate = null,
             int? sellerId = null)
         {
-            var query = _context.Sales
-                .AsQueryable()
-                .AsNoTracking();
+            var query = _context.Sales.AsQueryable();
 
             if (startDate.HasValue)
                 query = query.Where(s => s.SoldAt >= startDate.Value);
@@ -36,109 +36,111 @@ namespace ForrajeriaJovitaAPI.Services
             if (sellerId.HasValue)
                 query = query.Where(s => s.SellerUserId == sellerId.Value);
 
-            var salesEntities = await query
+            var sales = await query
                 .Include(s => s.SellerUser)
                 .Include(s => s.SalesItems).ThenInclude(i => i.Product)
                 .Include(s => s.SalesPayments)
                 .OrderByDescending(s => s.SoldAt)
                 .ToListAsync();
 
-            return salesEntities.Select(s => MapSaleToDto(s)).ToList();
+            return sales.Select(MapSaleToDto);
         }
 
+        // =====================================================
+        // GET BY ID
+        // =====================================================
         public async Task<SaleDto?> GetSaleByIdAsync(int id)
         {
             var sale = await _context.Sales
-                .AsNoTracking()
-                .Where(s => s.Id == id)
                 .Include(s => s.SellerUser)
                 .Include(s => s.SalesItems).ThenInclude(i => i.Product)
                 .Include(s => s.SalesPayments)
-                .FirstOrDefaultAsync();
+                .FirstOrDefaultAsync(s => s.Id == id);
 
-            if (sale == null) return null;
-            return MapSaleToDto(sale);
+            return sale == null ? null : MapSaleToDto(sale);
         }
 
+        // =====================================================
+        // 🟢 VENTA WEB (DESCUENTA STOCK CASA CENTRAL)
+        // =====================================================
         public async Task<SaleDto> CreatePublicSaleAsync(CreatePublicSaleDto dto)
         {
-            // 🔧 SIN TRANSACCIÓN - dejamos que EF maneje todo
+            using var tx = await _context.Database.BeginTransactionAsync();
+
             try
             {
                 if (dto.Items == null || !dto.Items.Any())
-                    throw new InvalidOperationException("El pedido debe incluir productos.");
+                    throw new InvalidOperationException("El pedido no tiene productos.");
 
-                foreach (var it in dto.Items)
+                // 1. VALIDAR STOCK
+                foreach (var item in dto.Items)
                 {
-                    if (it.Quantity <= 0)
-                        throw new InvalidOperationException($"Quantity inválida para producto {it.ProductId}.");
-                    if (it.UnitPrice < 0)
-                        throw new InvalidOperationException($"UnitPrice inválido para producto {it.ProductId}.");
+                    var stock = await _context.ProductsStocks
+                        .FirstOrDefaultAsync(s =>
+                            s.ProductId == item.ProductId &&
+                            s.BranchId == CASA_CENTRAL_BRANCH_ID);
+
+                    if (stock == null || stock.Quantity < item.Quantity)
+                        throw new InvalidOperationException(
+                            $"Stock insuficiente para producto {item.ProductId}");
                 }
 
-                decimal subtotal = dto.Items.Sum(i => i.Quantity * i.UnitPrice);
-                decimal discountTotal = 0m;
-                decimal total = subtotal + dto.ShippingCost - discountTotal;
-                if (total < 0) total = 0m;
-
+                // 2. USUARIO SISTEMA
                 var systemUser = await _context.Users
-                    .FirstOrDefaultAsync(u => u.Email == "admin@jovita.com" || u.UserName == "admin@jovita.com");
+                    .FirstOrDefaultAsync(u => u.Email == "admin@jovita.com")
+                    ?? throw new InvalidOperationException("Usuario sistema no encontrado");
 
-                if (systemUser == null)
-                    systemUser = await _context.Users.FirstOrDefaultAsync(u => u.RoleId == 1);
+                var cashSession = await _context.CashSessions
+                    .OrderByDescending(c => c.Id)
+                    .FirstOrDefaultAsync()
+                    ?? throw new InvalidOperationException("No hay sesión de caja activa");
 
-                if (systemUser == null)
-                    throw new InvalidOperationException("No se encontró usuario sistema (admin).");
+                // 3. TOTALES
+                decimal subtotal = dto.Items.Sum(i => i.Quantity * i.UnitPrice);
+                decimal total = subtotal + dto.ShippingCost;
 
-                var activeSession = await _context.CashSessions
-                    .OrderByDescending(s => s.Id)
-                    .FirstOrDefaultAsync();
-
-                if (activeSession == null)
-                    throw new InvalidOperationException("No se encontró CashSession. Crear/activar una sesión de caja.");
-
-                // 1. Crear CashMovement
+                // 4. CASH MOVEMENT
                 var cashMovement = new CashMovement
                 {
-                    CashSessionId = activeSession.Id,
+                    CashSessionId = cashSession.Id,
                     Type = CashMovementType.Sale,
                     Amount = total,
-                    Description = $"Venta Web - {DateTime.Now:yyyy-MM-dd HH:mm:ss} - {dto.PaymentReference ?? "Pedido Web"}",
+                    Description = "Venta Web",
                     CreationDate = DateTime.Now,
-                    TypeOfSale = "Web",
-                    MovementCancelled = false
+                    TypeOfSale = "Web"
                 };
 
                 _context.CashMovements.Add(cashMovement);
                 await _context.SaveChangesAsync();
 
-                // 2. Crear Sale
+                // 5. SALE
                 var sale = new Sale
                 {
                     CashMovementId = cashMovement.Id,
                     SellerUserId = systemUser.Id,
                     SoldAt = DateTime.Now,
                     Subtotal = subtotal,
-                    DiscountTotal = discountTotal,
+                    DiscountTotal = 0,
                     Total = total,
                     DeliveryType = 1,
                     DeliveryAddress = dto.Customer,
                     DeliveryCost = dto.ShippingCost,
-                    DeliveryNote = dto.PaymentReference ?? "Pedido Web",
-                    PaymentStatus = 0, // INT ahora
+                    DeliveryNote = dto.PaymentReference,
+                    PaymentStatus = 1,
                     CreationDate = DateTime.Now
                 };
 
                 _context.Sales.Add(sale);
                 await _context.SaveChangesAsync();
-                int saleId = sale.Id; // Guardar el ID
 
-                // 3. Crear SaleItems
+                // 6. ITEMS + DESCUENTO STOCK
                 foreach (var item in dto.Items)
                 {
-                    var product = await _context.Products.FindAsync(item.ProductId);
-                    if (product == null)
-                        throw new InvalidOperationException($"Producto {item.ProductId} no encontrado.");
+                    var stock = await _context.ProductsStocks.FirstAsync(s =>
+                        s.ProductId == item.ProductId &&
+                        s.BranchId == CASA_CENTRAL_BRANCH_ID);
+
+                    stock.Quantity -= item.Quantity;
 
                     _context.SalesItems.Add(new SaleItem
                     {
@@ -153,86 +155,49 @@ namespace ForrajeriaJovitaAPI.Services
                     });
                 }
 
-                await _context.SaveChangesAsync();
-
-                // 4. Determinar método de pago
-                decimal paymentsSum = 0m;
-                PaymentMethod paymentMethod = PaymentMethod.Cash;
-                if (!string.IsNullOrWhiteSpace(dto.PaymentMethod))
+                // 7. PAYMENT
+                _context.SalesPayments.Add(new SalePayment
                 {
-                    var pmLower = dto.PaymentMethod.ToString().ToLower();
-                    paymentMethod = pmLower switch
-                    {
-                        "cash" => PaymentMethod.Cash,
-                        "card" => PaymentMethod.Card,
-                        "credit" => PaymentMethod.Credit,
-                        "transfer" => PaymentMethod.Transfer,
-                        _ => PaymentMethod.Cash
-                    };
-                }
-
-                // 5. Crear SalePayment
-                if (total > 0)
-                {
-                    var salePayment = new SalePayment
-                    {
-                        SaleId = sale.Id,
-                        Method = paymentMethod,
-                        Amount = total,
-                        Reference = dto.PaymentReference ?? "Pedido Web",
-                        CreationDate = DateTime.Now
-                    };
-                    _context.SalesPayments.Add(salePayment);
-                    paymentsSum += total;
-                }
+                    SaleId = sale.Id,
+                    Method = PaymentMethod.Transfer,
+                    Amount = total,
+                    Reference = dto.PaymentReference ?? "Web",
+                    CreationDate = DateTime.Now
+                });
 
                 await _context.SaveChangesAsync();
+                await tx.CommitAsync();
 
-                // 6. Actualizar PaymentStatus
-                if (paymentsSum >= total && total > 0)
-                    sale.PaymentStatus = 1; // INT
-                else if (paymentsSum > 0 && paymentsSum < total)
-                    sale.PaymentStatus = 2; // INT
-                else
-                    sale.PaymentStatus = 0; // INT
-
-                await _context.SaveChangesAsync();
-
-                // 7. Retornar DTO - usar el ID guardado
-                return (await GetSaleByIdAsync(saleId))!;
+                return (await GetSaleByIdAsync(sale.Id))!;
             }
-            catch (Exception ex)
+            catch
             {
-                throw new InvalidOperationException($"Error al crear venta pública: {ex.Message}", ex);
+                await tx.RollbackAsync();
+                throw;
             }
         }
 
+        // =====================================================
+        // VENTA INTERNA (YA TENÍAS BIEN)
+        // =====================================================
         public async Task<SaleDto> CreateSaleAsync(CreateSaleDto dto)
         {
-            using var transaction = await _context.Database.BeginTransactionAsync();
+            using var tx = await _context.Database.BeginTransactionAsync();
+
             try
             {
-                var seller = await _context.Users.FindAsync(dto.SellerUserId);
-                if (seller == null)
-                    throw new InvalidOperationException("Vendedor no encontrado.");
-
-                var cashSession = await _context.CashSessions.FindAsync(dto.CashSessionId);
-                if (cashSession == null)
-                    throw new InvalidOperationException("Sesión de caja no encontrada.");
+                var cashSession = await _context.CashSessions.FindAsync(dto.CashSessionId)
+                    ?? throw new InvalidOperationException("Caja inválida");
 
                 decimal subtotal = dto.Items.Sum(i => i.Quantity * i.UnitPrice);
-                decimal totalDiscount = dto.Items.Sum(i => i.Discount);
-                decimal total = subtotal - totalDiscount;
-
-                if (dto.Payments.Sum(p => p.Amount) < total)
-                    throw new InvalidOperationException("Los pagos no cubren el total.");
+                decimal total = subtotal - dto.Items.Sum(i => i.Discount);
 
                 var cashMovement = new CashMovement
                 {
-                    CashSessionId = dto.CashSessionId,
+                    CashSessionId = cashSession.Id,
                     Type = CashMovementType.Sale,
                     Amount = total,
-                    Description = "Venta realizada",
+                    Description = "Venta Caja",
                     CreationDate = DateTime.Now
                 };
 
@@ -242,12 +207,12 @@ namespace ForrajeriaJovitaAPI.Services
                 var sale = new Sale
                 {
                     CashMovementId = cashMovement.Id,
-                    SoldAt = DateTime.Now,
                     SellerUserId = dto.SellerUserId,
+                    SoldAt = DateTime.Now,
                     Subtotal = subtotal,
-                    DiscountTotal = totalDiscount,
+                    DiscountTotal = subtotal - total,
                     Total = total,
-                    PaymentStatus = 1, // INT
+                    PaymentStatus = 1,
                     CreationDate = DateTime.Now
                 };
 
@@ -256,8 +221,14 @@ namespace ForrajeriaJovitaAPI.Services
 
                 foreach (var item in dto.Items)
                 {
-                    var product = await _context.Products.FindAsync(item.ProductId)
-                        ?? throw new InvalidOperationException("Producto no encontrado.");
+                    var stock = await _context.ProductsStocks.FirstAsync(s =>
+                        s.ProductId == item.ProductId &&
+                        s.BranchId == cashSession.BranchId);
+
+                    if (stock.Quantity < item.Quantity)
+                        throw new InvalidOperationException("Stock insuficiente");
+
+                    stock.Quantity -= item.Quantity;
 
                     _context.SalesItems.Add(new SaleItem
                     {
@@ -266,20 +237,10 @@ namespace ForrajeriaJovitaAPI.Services
                         Quantity = item.Quantity,
                         UnitPrice = item.UnitPrice,
                         Discount = item.Discount,
-                        ProductUnitId = item.ProductUnitId,
                         ConversionToBase = 1,
                         DeductedBaseQuantity = item.Quantity,
                         CreationDate = DateTime.Now
                     });
-
-                    var stock = await _context.ProductsStocks.FirstOrDefaultAsync(s =>
-                        s.ProductId == item.ProductId &&
-                        s.BranchId == cashSession.BranchId);
-
-                    if (stock == null || stock.Quantity < item.Quantity)
-                        throw new InvalidOperationException($"Stock insuficiente para {product.Name}");
-
-                    stock.Quantity -= item.Quantity;
                 }
 
                 foreach (var pay in dto.Payments)
@@ -295,83 +256,29 @@ namespace ForrajeriaJovitaAPI.Services
                 }
 
                 await _context.SaveChangesAsync();
-                await transaction.CommitAsync();
+                await tx.CommitAsync();
 
                 return (await GetSaleByIdAsync(sale.Id))!;
             }
             catch
             {
-                await transaction.RollbackAsync();
+                await tx.RollbackAsync();
                 throw;
             }
         }
 
-        public async Task<SaleDto?> UpdateSaleAsync(int id, UpdateSaleDto dto)
-        {
-            var sale = await _context.Sales
-                .Include(s => s.SellerUser)
-                .Include(s => s.SalesItems).ThenInclude(i => i.Product)
-                .Include(s => s.SalesPayments)
-                .FirstOrDefaultAsync(s => s.Id == id);
-
-            if (sale == null) return null;
-
-            if (dto.DeliveryType.HasValue)
-                sale.DeliveryType = dto.DeliveryType.Value;
-
-            if (!string.IsNullOrWhiteSpace(dto.DeliveryAddress))
-                sale.DeliveryAddress = dto.DeliveryAddress;
-
-            if (dto.DeliveryCost.HasValue)
-                sale.DeliveryCost = dto.DeliveryCost.Value;
-
-            if (!string.IsNullOrWhiteSpace(dto.DeliveryNote))
-                sale.DeliveryNote = dto.DeliveryNote;
-
-            if (dto.PaymentStatus.HasValue)
-                sale.PaymentStatus = dto.PaymentStatus.Value; // Ya es INT
-
-            await _context.SaveChangesAsync();
-            return MapSaleToDto(sale);
-        }
-
-        public async Task<SaleDto?> UpdateSaleStatusAsync(int id, int status)
-        {
-            var sale = await _context.Sales.FindAsync(id);
-            if (sale == null) return null;
-
-            sale.PaymentStatus = status; // Ya es INT
-            await _context.SaveChangesAsync();
-
-            return await GetSaleByIdAsync(id);
-        }
-
-        public async Task<object> GetTodaySalesSummaryAsync()
-        {
-            var today = DateTime.Today;
-            var tomorrow = today.AddDays(1);
-
-            var sales = await _context.Sales
-                .Where(s => s.SoldAt >= today && s.SoldAt < tomorrow)
-                .ToListAsync();
-
-            return new
-            {
-                Date = today,
-                TotalSales = sales.Count,
-                TotalAmount = sales.Sum(s => s.Total),
-                TotalDiscount = sales.Sum(s => s.DiscountTotal),
-                AverageTicket = sales.Any() ? sales.Average(s => s.Total) : 0m
-            };
-        }
-
-        private SaleDto MapSaleToDto(Sale s)
+        // =====================================================
+        // MAP
+        // =====================================================
+        private static SaleDto MapSaleToDto(Sale s)
         {
             return new SaleDto
             {
                 Id = s.Id,
                 SoldAt = s.SoldAt,
-                SellerName = s.SellerUser != null ? $"{s.SellerUser.Name} {s.SellerUser.LastName}" : "Web",
+                SellerName = s.SellerUser != null
+                    ? $"{s.SellerUser.Name} {s.SellerUser.LastName}"
+                    : "Web",
                 Subtotal = s.Subtotal,
                 DiscountTotal = s.DiscountTotal,
                 Total = s.Total,
@@ -379,7 +286,7 @@ namespace ForrajeriaJovitaAPI.Services
                 DeliveryAddress = s.DeliveryAddress,
                 DeliveryCost = s.DeliveryCost,
                 DeliveryNote = s.DeliveryNote,
-                PaymentStatus = s.PaymentStatus, // Ya es INT
+                PaymentStatus = s.PaymentStatus,
                 Items = s.SalesItems.Select(i => new SaleItemDto
                 {
                     ProductId = i.ProductId,
@@ -394,7 +301,7 @@ namespace ForrajeriaJovitaAPI.Services
                     Method = (int)p.Method,
                     MethodName = p.Method.ToString(),
                     Amount = p.Amount,
-                    Reference = p.Reference ?? string.Empty
+                    Reference = p.Reference ?? ""
                 }).ToList()
             };
         }
