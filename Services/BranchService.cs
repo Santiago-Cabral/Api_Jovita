@@ -1,6 +1,3 @@
-// ============================================
-// BranchService.cs - CORREGIDO
-// ============================================
 using Microsoft.EntityFrameworkCore;
 using ForrajeriaJovitaAPI.Data;
 using ForrajeriaJovitaAPI.Models;
@@ -17,6 +14,9 @@ namespace ForrajeriaJovitaAPI.Services
             _context = context;
         }
 
+        // =============================
+        // GET ALL
+        // =============================
         public async Task<List<BranchDto>> GetAllBranchesAsync(bool? isActived = null)
         {
             var query = _context.Branches.Where(b => !b.IsDeleted);
@@ -24,18 +24,21 @@ namespace ForrajeriaJovitaAPI.Services
             if (isActived.HasValue)
                 query = query.Where(b => b.IsActived == isActived.Value);
 
-            var branches = await query.ToListAsync();
-
-            return branches.Select(b => new BranchDto
-            {
-                Id = b.Id,
-                Name = b.Name,
-                Address = b.Address,
-                IsActive = b.IsActived,
-                CreatedAt = b.CreationDate
-            }).ToList();
+            return await query
+                .Select(b => new BranchDto
+                {
+                    Id = b.Id,
+                    Name = b.Name,
+                    Address = b.Address,
+                    IsActive = b.IsActived,
+                    CreatedAt = b.CreationDate
+                })
+                .ToListAsync();
         }
 
+        // =============================
+        // GET BY ID
+        // =============================
         public async Task<BranchDto?> GetBranchByIdAsync(int id)
         {
             var branch = await _context.Branches
@@ -54,6 +57,9 @@ namespace ForrajeriaJovitaAPI.Services
             };
         }
 
+        // =============================
+        // CREATE
+        // =============================
         public async Task<BranchDto> CreateBranchAsync(CreateBranchDto dto)
         {
             var branch = new Branch
@@ -78,14 +84,46 @@ namespace ForrajeriaJovitaAPI.Services
             };
         }
 
+        // =============================
+        // UPDATE
+        // =============================
+        public async Task<BranchDto?> UpdateBranchAsync(int id, CreateBranchDto dto)
+        {
+            var branch = await _context.Branches
+                .FirstOrDefaultAsync(b => b.Id == id && !b.IsDeleted);
+
+            if (branch == null)
+                return null;
+
+            branch.Name = dto.Name;
+            branch.Address = dto.Address ?? branch.Address;
+            branch.IsActived = dto.IsActive;
+
+            await _context.SaveChangesAsync();
+
+            return new BranchDto
+            {
+                Id = branch.Id,
+                Name = branch.Name,
+                Address = branch.Address,
+                IsActive = branch.IsActived,
+                CreatedAt = branch.CreationDate
+            };
+        }
+
+        // =============================
+        // DELETE (SOFT)
+        // =============================
         public async Task<bool> DeleteBranchAsync(int id)
         {
             var branch = await _context.Branches.FindAsync(id);
+
             if (branch == null || branch.IsDeleted)
                 return false;
 
             branch.IsDeleted = true;
             await _context.SaveChangesAsync();
+
             return true;
         }
     }

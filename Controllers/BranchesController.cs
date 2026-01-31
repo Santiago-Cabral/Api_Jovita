@@ -1,7 +1,4 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using ForrajeriaJovitaAPI.Data;
-using ForrajeriaJovitaAPI.Models;
 using ForrajeriaJovitaAPI.DTOs;
 using ForrajeriaJovitaAPI.Services;
 
@@ -18,72 +15,66 @@ namespace ForrajeriaJovitaAPI.Controllers
             _branchService = branchService;
         }
 
+        // =============================
+        // GET ALL
+        // =============================
         [HttpGet]
         public async Task<ActionResult<IEnumerable<BranchDto>>> GetBranches([FromQuery] bool? isActived = null)
         {
-            try
-            {
-                var branches = await _branchService.GetAllBranchesAsync(isActived);
-                return Ok(branches);
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { message = "Error al obtener sucursales", error = ex.Message });
-            }
+            var branches = await _branchService.GetAllBranchesAsync(isActived);
+            return Ok(branches);
         }
 
+        // =============================
+        // GET BY ID
+        // =============================
         [HttpGet("{id}")]
         public async Task<ActionResult<BranchDto>> GetBranch(int id)
         {
-            try
-            {
-                var branch = await _branchService.GetBranchByIdAsync(id);
+            var branch = await _branchService.GetBranchByIdAsync(id);
 
-                if (branch == null)
-                {
-                    return NotFound(new { message = "Sucursal no encontrada" });
-                }
+            if (branch == null)
+                return NotFound(new { message = "Sucursal no encontrada" });
 
-                return Ok(branch);
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { message = "Error al obtener sucursal", error = ex.Message });
-            }
+            return Ok(branch);
         }
 
+        // =============================
+        // CREATE
+        // =============================
         [HttpPost]
-        public async Task<ActionResult<BranchDto>> CreateBranch(CreateBranchDto dto)
+        public async Task<ActionResult<BranchDto>> CreateBranch([FromBody] CreateBranchDto dto)
         {
-            try
-            {
-                var branch = await _branchService.CreateBranchAsync(dto);
-                return CreatedAtAction(nameof(GetBranch), new { id = branch.Id }, branch);
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { message = "Error al crear sucursal", error = ex.Message });
-            }
+            var branch = await _branchService.CreateBranchAsync(dto);
+            return CreatedAtAction(nameof(GetBranch), new { id = branch.Id }, branch);
         }
 
+        // =============================
+        // UPDATE (EL QUE FALTABA)
+        // =============================
+        [HttpPut("{id}")]
+        public async Task<ActionResult<BranchDto>> UpdateBranch(int id, [FromBody] CreateBranchDto dto)
+        {
+            var branch = await _branchService.UpdateBranchAsync(id, dto);
+
+            if (branch == null)
+                return NotFound(new { message = "Sucursal no encontrada" });
+
+            return Ok(branch);
+        }
+
+        // =============================
+        // DELETE (SOFT)
+        // =============================
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteBranch(int id)
         {
-            try
-            {
-                var result = await _branchService.DeleteBranchAsync(id);
+            var result = await _branchService.DeleteBranchAsync(id);
 
-                if (!result)
-                {
-                    return NotFound(new { message = "Sucursal no encontrada" });
-                }
+            if (!result)
+                return NotFound(new { message = "Sucursal no encontrada" });
 
-                return Ok(new { message = "Sucursal eliminada correctamente" });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { message = "Error al eliminar sucursal", error = ex.Message });
-            }
+            return Ok(new { message = "Sucursal eliminada correctamente" });
         }
     }
 }
