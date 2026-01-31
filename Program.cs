@@ -131,8 +131,8 @@ builder.Services.AddCors(options =>
                 "https://forrajeria-jovita.vercel.app"
             )
             .AllowAnyHeader()
-            .AllowAnyMethod();
-            
+            .AllowAnyMethod()
+            .AllowCredentials(); // ⭐ Agregado para auth
     });
 });
 
