@@ -1,5 +1,6 @@
 ﻿using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Json.Serialization;
 using ForrajeriaJovitaAPI.Data;
 using ForrajeriaJovitaAPI.Models;
 using ForrajeriaJovitaAPI.Security;
@@ -11,7 +12,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
-using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -59,7 +59,6 @@ var jwtIssuer = builder.Configuration["Jwt:Issuer"]
 var jwtAudience = builder.Configuration["Jwt:Audience"]
     ?? throw new Exception("Jwt:Audience missing");
 
-// ⭐ REGISTRO DE JwtSettings (CRÍTICO)
 builder.Services.AddSingleton(new JwtSettings
 {
     Key = jwtKey,
@@ -85,7 +84,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 
 // =====================================================
-// DEPENDENCY INJECTION (CRÍTICO)
+// DEPENDENCY INJECTION
 // =====================================================
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();
@@ -94,6 +93,10 @@ builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
 builder.Services.AddScoped<IVentaService, VentaService>();
 builder.Services.AddScoped<ICheckoutService, CheckoutService>();
 builder.Services.AddScoped<IStockService, StockService>();
+
+// ⭐ AGREGADOS (CRÍTICOS)
+builder.Services.AddScoped<IClientAccountService, ClientAccountService>();
+builder.Services.AddScoped<ICategoryService, CategoryService>();
 
 // =====================================================
 // CONTROLLERS / JSON
@@ -132,7 +135,7 @@ builder.Services.AddCors(options =>
             )
             .AllowAnyHeader()
             .AllowAnyMethod()
-            .AllowCredentials(); // ⭐ Agregado para auth
+            .AllowCredentials();
     });
 });
 
@@ -157,7 +160,7 @@ var app = builder.Build();
 app.UseSwagger();
 app.UseSwaggerUI();
 
-// ⭐ Comentado para Render (Render maneja HTTPS)
+// Render maneja HTTPS
 // app.UseHttpsRedirection();
 
 app.UseForwardedHeaders();
