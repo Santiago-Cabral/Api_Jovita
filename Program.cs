@@ -1,5 +1,6 @@
 ﻿using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using ForrajeriaJovitaAPI.Data;
 using ForrajeriaJovitaAPI.Models;
@@ -7,6 +8,7 @@ using ForrajeriaJovitaAPI.Security;
 using ForrajeriaJovitaAPI.Services;
 using ForrajeriaJovitaAPI.Services.Interfaces;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -15,49 +17,42 @@ using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// -----------------------
+// Logging (útil para Render / prod)
+// -----------------------
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+
 // =====================================================
 // DB
 // =====================================================
 builder.Services.AddDbContext<ForrajeriaContext>(options =>
-    options.UseSqlServer(
-        builder.Configuration.GetConnectionString("DefaultConnection"))
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"))
 );
 
 // =====================================================
 // PAYWAY
 // =====================================================
-builder.Services.Configure<PaywayOptions>(
-    builder.Configuration.GetSection("Payway"));
-
-builder.Services.AddSingleton(sp =>
-    sp.GetRequiredService<IOptions<PaywayOptions>>().Value);
+builder.Services.Configure<PaywayOptions>(builder.Configuration.GetSection("Payway"));
+builder.Services.AddSingleton(sp => sp.GetRequiredService<IOptions<PaywayOptions>>().Value);
 
 builder.Services.AddHttpClient<IPaywayService, PaywayService>((sp, client) =>
 {
     var cfg = sp.GetRequiredService<PaywayOptions>();
-
     if (string.IsNullOrWhiteSpace(cfg.ApiUrl))
         throw new Exception("Payway ApiUrl not configured");
 
-    client.BaseAddress = new Uri(
-        cfg.ApiUrl.EndsWith("/") ? cfg.ApiUrl : cfg.ApiUrl + "/");
-
+    client.BaseAddress = new Uri(cfg.ApiUrl.EndsWith("/") ? cfg.ApiUrl : cfg.ApiUrl + "/");
     client.Timeout = TimeSpan.FromSeconds(45);
-    client.DefaultRequestHeaders.Accept.Add(
-        new MediaTypeWithQualityHeaderValue("application/json"));
+    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 });
 
 // =====================================================
 // JWT
 // =====================================================
-var jwtKey = builder.Configuration["Jwt:Key"]
-    ?? throw new Exception("Jwt:Key missing");
-
-var jwtIssuer = builder.Configuration["Jwt:Issuer"]
-    ?? throw new Exception("Jwt:Issuer missing");
-
-var jwtAudience = builder.Configuration["Jwt:Audience"]
-    ?? throw new Exception("Jwt:Audience missing");
+var jwtKey = builder.Configuration["Jwt:Key"] ?? throw new Exception("Jwt:Key missing");
+var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? throw new Exception("Jwt:Issuer missing");
+var jwtAudience = builder.Configuration["Jwt:Audience"] ?? throw new Exception("Jwt:Audience missing");
 
 builder.Services.AddSingleton(new JwtSettings
 {
@@ -78,13 +73,12 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateLifetime = true,
             ValidIssuer = jwtIssuer,
             ValidAudience = jwtAudience,
-            IssuerSigningKey = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(jwtKey))
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
         };
     });
 
 // =====================================================
-// DEPENDENCY INJECTION
+// DEPENDENCY INJECTION (agregá/ajustá según tus implementaciones)
 // =====================================================
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();
@@ -94,7 +88,8 @@ builder.Services.AddScoped<IVentaService, VentaService>();
 builder.Services.AddScoped<ICheckoutService, CheckoutService>();
 builder.Services.AddScoped<IStockService, StockService>();
 
-// ⭐ AGREGADOS (CRÍTICOS)
+// Si tenés implementaciones, registralas. Si no, registra stubs temporales.
+// Asegurate de que ClientAccountService y CategoryService existan y compilen.
 builder.Services.AddScoped<IClientAccountService, ClientAccountService>();
 builder.Services.AddScoped<ICategoryService, CategoryService>();
 
@@ -105,8 +100,7 @@ builder.Services.AddControllers()
     .AddJsonOptions(opts =>
     {
         opts.JsonSerializerOptions.PropertyNamingPolicy = null;
-        opts.JsonSerializerOptions.DefaultIgnoreCondition =
-            JsonIgnoreCondition.WhenWritingNull;
+        opts.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
     });
 
 // =====================================================
@@ -115,15 +109,11 @@ builder.Services.AddControllers()
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
-    c.SwaggerDoc("v1", new OpenApiInfo
-    {
-        Title = "ForrajeriaJovitaAPI",
-        Version = "v1"
-    });
+    c.SwaggerDoc("v1", new OpenApiInfo { Title = "ForrajeriaJovitaAPI", Version = "v1" });
 });
 
 // =====================================================
-// CORS
+// CORS (policy por defecto y policy "dev" para pruebas)
 // =====================================================
 builder.Services.AddCors(options =>
 {
@@ -137,16 +127,22 @@ builder.Services.AddCors(options =>
             .AllowAnyMethod()
             .AllowCredentials();
     });
+
+    // Policy temporal para DEV: permite cualquier origen (no usar en prod si necesitás credenciales)
+    options.AddPolicy("DevAllowAll", policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyHeader()
+              .AllowAnyMethod();
+    });
 });
 
 // =====================================================
-// FORWARDED HEADERS (RENDER)
+// FORWARDED HEADERS (Renders / proxies)
 // =====================================================
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
-    options.ForwardedHeaders =
-        ForwardedHeaders.XForwardedFor |
-        ForwardedHeaders.XForwardedProto;
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
 });
 
 // =====================================================
@@ -154,20 +150,72 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 // =====================================================
 var app = builder.Build();
 
+// -----------------------
+// Manejo global de errores (muestra stack en Development)
+// -----------------------
+if (app.Environment.IsDevelopment())
+{
+    app.UseDeveloperExceptionPage();
+}
+else
+{
+    app.UseExceptionHandler(errApp =>
+    {
+        errApp.Run(async context =>
+        {
+            var exFeature = context.Features.Get<IExceptionHandlerFeature>();
+            var ex = exFeature?.Error;
+            app.Logger.LogError(ex, "Unhandled exception");
+
+            context.Response.StatusCode = 500;
+            context.Response.ContentType = "application/json";
+
+            var payload = new
+            {
+                error = "Internal Server Error",
+                detail = app.Environment.IsDevelopment() ? ex?.ToString() : null
+            };
+
+            await context.Response.WriteAsync(JsonSerializer.Serialize(payload));
+        });
+    });
+}
+
+// -----------------------
+// (DEBUG) - asegurarse que el header CORS está presente incluso cuando hay errores.
+// Sólo para debugging — eliminar en producción si no lo necesitás.
+// Esto ayuda a ver el error real en el cliente (o al menos evitar que el navegador lo esconda con CORS).
+// -----------------------
+app.Use(async (context, next) =>
+{
+    context.Response.OnStarting(() =>
+    {
+        if (!context.Response.Headers.ContainsKey("Access-Control-Allow-Origin"))
+        {
+            // Cambiá el origin según sea necesario; aquí el que usás en dev.
+            context.Response.Headers.Add("Access-Control-Allow-Origin", "http://localhost:5173");
+        }
+        return Task.CompletedTask;
+    });
+
+    await next();
+});
+
 // =====================================================
-// PIPELINE
+// PIPELINE (orden importante)
 // =====================================================
 app.UseSwagger();
 app.UseSwaggerUI();
 
-// Render maneja HTTPS
-// app.UseHttpsRedirection();
+// app.UseHttpsRedirection(); // comentado porque Render maneja HTTPS
 
 app.UseForwardedHeaders();
 
 app.UseRouting();
 
-app.UseCors("AllowFrontend");
+// Usa la policy DevAllowAll en Development para descartar problemas de origen.
+// En producción usa "AllowFrontend".
+app.UseCors(app.Environment.IsDevelopment() ? "DevAllowAll" : "AllowFrontend");
 
 app.UseAuthentication();
 app.UseAuthorization();
@@ -175,7 +223,7 @@ app.UseAuthorization();
 app.MapControllers();
 
 // =====================================================
-// STARTUP LOG
+// STARTUP LOG (info útil)
 // =====================================================
 try
 {
