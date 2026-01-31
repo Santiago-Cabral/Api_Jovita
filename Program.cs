@@ -182,25 +182,6 @@ else
 }
 
 // -----------------------
-// (DEBUG) - asegurarse que el header CORS está presente incluso cuando hay errores.
-// Sólo para debugging — eliminar en producción si no lo necesitás.
-// Esto ayuda a ver el error real en el cliente (o al menos evitar que el navegador lo esconda con CORS).
-// -----------------------
-app.Use(async (context, next) =>
-{
-    context.Response.OnStarting(() =>
-    {
-        if (!context.Response.Headers.ContainsKey("Access-Control-Allow-Origin"))
-        {
-            // Cambiá el origin según sea necesario; aquí el que usás en dev.
-            context.Response.Headers.Add("Access-Control-Allow-Origin", "http://localhost:5173");
-        }
-        return Task.CompletedTask;
-    });
-
-    await next();
-});
-
 // =====================================================
 // PIPELINE (orden importante)
 // =====================================================
