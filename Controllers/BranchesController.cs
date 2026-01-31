@@ -63,6 +63,18 @@ namespace ForrajeriaJovitaAPI.Controllers
             return Ok(branch);
         }
 
+        [HttpPatch("{id}/active")]
+        public async Task<IActionResult> SetActive(int id, [FromQuery] bool value)
+        {
+            var ok = await _branchService.SetBranchActiveAsync(id, value);
+
+            if (!ok)
+                return NotFound(new { message = "Sucursal no encontrada" });
+
+            return Ok(new { message = "Estado actualizado", isActive = value });
+        }
+
+
         // =============================
         // DELETE (SOFT)
         // =============================

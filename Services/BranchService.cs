@@ -110,6 +110,19 @@ namespace ForrajeriaJovitaAPI.Services
                 CreatedAt = branch.CreationDate
             };
         }
+        public async Task<bool> SetBranchActiveAsync(int id, bool isActive)
+        {
+            var branch = await _context.Branches
+                .FirstOrDefaultAsync(b => b.Id == id && !b.IsDeleted);
+
+            if (branch == null)
+                return false;
+
+            branch.IsActived = isActive;
+            await _context.SaveChangesAsync();
+            return true;
+        }
+
 
         // =============================
         // DELETE (SOFT)

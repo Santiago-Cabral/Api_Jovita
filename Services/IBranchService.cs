@@ -8,6 +8,7 @@ namespace ForrajeriaJovitaAPI.Services
         Task<BranchDto?> GetBranchByIdAsync(int id);
         Task<BranchDto> CreateBranchAsync(CreateBranchDto dto);
         Task<BranchDto?> UpdateBranchAsync(int id, CreateBranchDto dto);
+        Task<bool> SetBranchActiveAsync(int id, bool isActive);
         Task<bool> DeleteBranchAsync(int id);
     }
 }
