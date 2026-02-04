@@ -18,5 +18,7 @@ namespace ForrajeriaJovitaAPI.Services
         Task<SaleDto?> UpdateSaleAsync(int id, UpdateSaleDto dto);
 
         Task<object> GetTodaySalesSummaryAsync();
+        Task<bool> DeleteSaleAsync(int id);
+
     }
 }

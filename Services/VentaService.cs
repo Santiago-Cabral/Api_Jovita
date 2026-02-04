@@ -191,6 +191,18 @@ namespace ForrajeriaJovitaAPI.Services
                 TotalAmount = sales.Sum(s => s.Total)
             };
         }
+        public async Task<bool> DeleteSaleAsync(int id)
+        {
+            var sale = await _context.Sales.FirstOrDefaultAsync(s => s.Id == id);
+
+            if (sale == null)
+                return false;
+
+            sale.IsDeleted = true;
+
+            await _context.SaveChangesAsync();
+            return true;
+        }
 
         // =========================================================
         // MAP

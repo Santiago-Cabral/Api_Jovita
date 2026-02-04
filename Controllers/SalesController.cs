@@ -365,6 +365,37 @@ namespace ForrajeriaJovitaAPI.Controllers
                 });
             }
         }
+        // ======================================================================
+        // DELETE /api/sales/{id}  (SOFT DELETE)
+        // ======================================================================
+        [HttpDelete("{id:int}")]
+        [Authorize]
+        public async Task<IActionResult> DeleteSale(int id)
+        {
+            try
+            {
+                var ok = await _ventaService.DeleteSaleAsync(id);
+
+                if (!ok)
+                {
+                    _logger.LogWarning("Venta {Id} no encontrada para borrar", id);
+                    return NotFound(new { message = "Venta no encontrada" });
+                }
+
+                _logger.LogInformation("Venta {Id} marcada como eliminada", id);
+                return NoContent();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al borrar venta {Id}", id);
+                return StatusCode(500, new
+                {
+                    message = "Error al borrar venta",
+                    error = ex.Message
+                });
+            }
+        }
+
 
         // ======================================================================
         // GET /api/sales/total
