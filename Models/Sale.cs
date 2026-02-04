@@ -32,6 +32,9 @@ namespace ForrajeriaJovitaAPI.Models
 
         public DateTime CreationDate { get; set; } = DateTime.Now;
 
+        // ✅ SOFT DELETE
+        public bool IsDeleted { get; set; } = false;
+
         public virtual ICollection<SaleItem> SalesItems { get; set; } = new List<SaleItem>();
         public virtual ICollection<SalePayment> SalesPayments { get; set; } = new List<SalePayment>();
     }
