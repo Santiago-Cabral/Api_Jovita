@@ -23,7 +23,10 @@ namespace ForrajeriaJovitaAPI.Services
             DateTime? endDate = null,
             int? sellerId = null)
         {
-            var query = _context.Sales.AsQueryable();
+            // Filtrar ventas eliminadas (soft delete)
+            var query = _context.Sales
+                .Where(s => !s.IsDeleted)
+                .AsQueryable();
 
             if (startDate.HasValue)
                 query = query.Where(s => s.SoldAt >= startDate.Value);
@@ -53,7 +56,7 @@ namespace ForrajeriaJovitaAPI.Services
                 .Include(s => s.SellerUser)
                 .Include(s => s.SalesItems).ThenInclude(i => i.Product)
                 .Include(s => s.SalesPayments)
-                .FirstOrDefaultAsync(s => s.Id == id);
+                .FirstOrDefaultAsync(s => s.Id == id && !s.IsDeleted);
 
             return sale == null ? null : MapSaleToDto(sale);
         }
@@ -181,7 +184,7 @@ namespace ForrajeriaJovitaAPI.Services
             var tomorrow = today.AddDays(1);
 
             var sales = await _context.Sales
-                .Where(s => s.SoldAt >= today && s.SoldAt < tomorrow)
+                .Where(s => s.SoldAt >= today && s.SoldAt < tomorrow && !s.IsDeleted)
                 .ToListAsync();
 
             return new
@@ -191,6 +194,7 @@ namespace ForrajeriaJovitaAPI.Services
                 TotalAmount = sales.Sum(s => s.Total)
             };
         }
+
         public async Task<bool> DeleteSaleAsync(int id)
         {
             var sale = await _context.Sales.FirstOrDefaultAsync(s => s.Id == id);
@@ -218,3 +222,4 @@ namespace ForrajeriaJovitaAPI.Services
         }
     }
 }
+
