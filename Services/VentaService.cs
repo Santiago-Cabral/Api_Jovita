@@ -38,6 +38,7 @@ namespace ForrajeriaJovitaAPI.Services
                 query = query.Where(s => s.SellerUserId == sellerId.Value);
 
             var sales = await query
+                .Include(s => s.Client) // <-- incluir cliente para obtener nombre/datos
                 .Include(s => s.SellerUser)
                 .Include(s => s.SalesItems).ThenInclude(i => i.Product)
                 .Include(s => s.SalesPayments)
@@ -53,6 +54,7 @@ namespace ForrajeriaJovitaAPI.Services
         public async Task<SaleDto?> GetSaleByIdAsync(int id)
         {
             var sale = await _context.Sales
+                .Include(s => s.Client)
                 .Include(s => s.SellerUser)
                 .Include(s => s.SalesItems).ThenInclude(i => i.Product)
                 .Include(s => s.SalesPayments)
@@ -117,6 +119,13 @@ namespace ForrajeriaJovitaAPI.Services
                     CreationDate = DateTime.Now
                 };
 
+                // Si el DTO trae DeliveryAddress / ClientId opcional, asignalo (para compatibilidad)
+                if (!string.IsNullOrWhiteSpace(dto.DeliveryAddress))
+                    sale.DeliveryAddress = dto.DeliveryAddress;
+
+                if (dto.ClientId.HasValue)
+                    sale.ClientId = dto.ClientId.Value;
+
                 _context.Sales.Add(sale);
                 await _context.SaveChangesAsync();
 
@@ -171,6 +180,10 @@ namespace ForrajeriaJovitaAPI.Services
             if (!string.IsNullOrWhiteSpace(dto.DeliveryAddress))
                 sale.DeliveryAddress = dto.DeliveryAddress;
 
+            // si el DTO trae clientId o clientName podrías asociar aquí (opcional)
+            if (dto.ClientId.HasValue)
+                sale.ClientId = dto.ClientId.Value;
+
             await _context.SaveChangesAsync();
             return await GetSaleByIdAsync(id);
         }
@@ -213,13 +226,51 @@ namespace ForrajeriaJovitaAPI.Services
         // =========================================================
         private static SaleDto MapSaleToDto(Sale s)
         {
+            // Mapear items
+            var items = s.SalesItems?.Select(i => new SaleItemDto
+            {
+                ProductId = i.ProductId,
+                ProductName = i.Product?.Name ?? i.ProductName ?? "Producto",
+                UnitPrice = i.UnitPrice,
+                Quantity = i.Quantity,
+                Discount = i.Discount,
+                Total = (i.UnitPrice * i.Quantity) - i.Discount
+            }).ToList() ?? new List<SaleItemDto>();
+
+            // Mapear payments
+            var payments = s.SalesPayments?.Select(p => new SalePaymentDto
+            {
+                MethodName = p.MethodName ?? p.Method ?? string.Empty,
+                Amount = p.Amount,
+                Reference = p.Reference
+            }).ToList() ?? new List<SalePaymentDto>();
+
             return new SaleDto
             {
                 Id = s.Id,
                 SoldAt = s.SoldAt,
-                Total = s.Total
+                SellerName = s.SellerUser != null
+                    ? (s.SellerUser.FullName ?? s.SellerUser.UserName ?? "E-commerce")
+                    : "E-commerce",
+
+                Subtotal = s.Subtotal,
+                DiscountTotal = s.DiscountTotal,
+                Total = s.Total,
+
+                ClientId = s.ClientId,
+                ClientName = s.Client != null ? s.Client.FullName : null,
+
+                DeliveryType = s.DeliveryType,
+                DeliveryAddress = s.DeliveryAddress,
+                DeliveryCost = s.DeliveryCost,
+                DeliveryNote = s.DeliveryNote,
+
+                PaymentStatus = s.PaymentStatus,
+                Items = items,
+                Payments = payments
             };
         }
     }
 }
+
 
