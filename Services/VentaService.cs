@@ -19,15 +19,9 @@ namespace ForrajeriaJovitaAPI.Services
             _context = context;
         }
 
-        public async Task<IEnumerable<SaleDto>> GetAllSalesAsync(
-            DateTime? startDate = null,
-            DateTime? endDate = null,
-            int? sellerId = null)
+        public async Task<IEnumerable<SaleDto>> GetAllSalesAsync(DateTime? startDate = null, DateTime? endDate = null, int? sellerId = null)
         {
-            var query = _context.Sales
-                .Where(s => !s.IsDeleted)
-                .AsQueryable();
-
+            var query = _context.Sales.Where(s => !s.IsDeleted).AsQueryable();
             if (startDate.HasValue) query = query.Where(s => s.SoldAt >= startDate.Value);
             if (endDate.HasValue) query = query.Where(s => s.SoldAt <= endDate.Value);
             if (sellerId.HasValue) query = query.Where(s => s.SellerUserId == sellerId.Value);
@@ -55,8 +49,24 @@ namespace ForrajeriaJovitaAPI.Services
             return sale == null ? null : MapSaleToDto(sale);
         }
 
-        // Checkout público (sin requerir cliente registrado).
-        // NOTE: no intenta leer dto.Payments porque tu CreatePublicSaleDto no lo define.
+        // Helper: parse "Nombre - Telefono" u otros formatos
+        private static (string? name, string? phone) ParseCustomerFromString(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return (null, null);
+            var r = raw.Trim();
+            var dashIdx = r.IndexOf('-');
+            if (dashIdx > 0)
+            {
+                var left = r.Substring(0, dashIdx).Trim();
+                var right = r.Substring(dashIdx + 1).Trim();
+                return (string.IsNullOrWhiteSpace(left) ? null : left, string.IsNullOrWhiteSpace(right) ? null : right);
+            }
+            // si no tiene '-' devolver todo como nombre si no es sólo números
+            if (!System.Text.RegularExpressions.Regex.IsMatch(r, @"^\d+$"))
+                return (r, null);
+            return (null, r);
+        }
+
         public async Task<SaleDto> CreatePublicSaleAsync(CreatePublicSaleDto dto)
         {
             using var tx = await _context.Database.BeginTransactionAsync();
@@ -65,12 +75,11 @@ namespace ForrajeriaJovitaAPI.Services
                 if (string.IsNullOrWhiteSpace(dto.Customer))
                     throw new ArgumentException("Customer (dirección) es requerido.");
 
-                // validar y descontar stock
+                // Descontar stock
                 foreach (var item in dto.Items)
                 {
                     var stock = await _context.ProductsStocks.FirstOrDefaultAsync(s =>
-                        s.ProductId == item.ProductId &&
-                        s.BranchId == CASA_CENTRAL_BRANCH_ID);
+                        s.ProductId == item.ProductId && s.BranchId == CASA_CENTRAL_BRANCH_ID);
 
                     if (stock == null || stock.Quantity < item.Quantity)
                         throw new InvalidOperationException($"Stock insuficiente para producto {item.ProductId}");
@@ -82,8 +91,6 @@ namespace ForrajeriaJovitaAPI.Services
                 var cashSession = await _context.CashSessions.OrderByDescending(c => c.Id).FirstAsync();
 
                 decimal subtotal = dto.Items.Sum(i => i.Quantity * i.UnitPrice);
-
-                // Aquí dto.ShippingCost es decimal (no nulo) según tus DTOs. No usar ??.
                 decimal shipping = dto.ShippingCost;
                 decimal total = subtotal + shipping;
 
@@ -94,10 +101,10 @@ namespace ForrajeriaJovitaAPI.Services
                     Amount = total,
                     CreationDate = DateTime.UtcNow
                 };
-
                 _context.CashMovements.Add(cashMovement);
                 await _context.SaveChangesAsync();
 
+                // Buscar o crear cliente por email/phone si vienen
                 Client? client = null;
                 if (!string.IsNullOrWhiteSpace(dto.Email) || !string.IsNullOrWhiteSpace(dto.Phone))
                 {
@@ -126,6 +133,9 @@ namespace ForrajeriaJovitaAPI.Services
                     }
                 }
 
+                // Parsear dto.Customer si tiene "Nombre - Telefono"
+                var (parsedName, parsedPhone) = ParseCustomerFromString(dto.Customer);
+
                 var sale = new Sale
                 {
                     CashMovementId = cashMovement.Id,
@@ -133,7 +143,10 @@ namespace ForrajeriaJovitaAPI.Services
                     SoldAt = DateTime.UtcNow,
                     Subtotal = subtotal,
                     DiscountTotal = 0,
-                    CustomerName = dto.Customer,
+                    // Guardar campos explícitos
+                    CustomerName = !string.IsNullOrWhiteSpace(parsedName) ? parsedName : dto.Customer,
+                    CustomerPhone = string.IsNullOrWhiteSpace(dto.Phone) ? parsedPhone : dto.Phone,
+                    CustomerEmail = dto.Email,
                     Total = total,
                     PaymentStatus = 0,
                     CreationDate = DateTime.UtcNow,
@@ -161,7 +174,6 @@ namespace ForrajeriaJovitaAPI.Services
                     });
                 }
 
-                // Nota: no procesamos pagos aquí porque CreatePublicSaleDto no define Payments.
                 await _context.SaveChangesAsync();
                 await tx.CommitAsync();
 
@@ -174,18 +186,15 @@ namespace ForrajeriaJovitaAPI.Services
             }
         }
 
-        // Venta desde POS/admin (espera Payments en CreateSaleDto)
         public async Task<SaleDto> CreateSaleAsync(CreateSaleDto dto)
         {
             using var tx = await _context.Database.BeginTransactionAsync();
             try
             {
-                // validar y descontar stock
                 foreach (var item in dto.Items)
                 {
                     var stock = await _context.ProductsStocks.FirstOrDefaultAsync(s =>
-                        s.ProductId == item.ProductId &&
-                        s.BranchId == CASA_CENTRAL_BRANCH_ID);
+                        s.ProductId == item.ProductId && s.BranchId == CASA_CENTRAL_BRANCH_ID);
 
                     if (stock == null || stock.Quantity < item.Quantity)
                         throw new InvalidOperationException($"Stock insuficiente para producto {item.ProductId}");
@@ -194,9 +203,7 @@ namespace ForrajeriaJovitaAPI.Services
                 }
 
                 var user = await _context.Users.FirstAsync();
-                var cashSession = await _context.CashSessions
-                    .OrderByDescending(c => c.Id)
-                    .FirstAsync();
+                var cashSession = await _context.CashSessions.OrderByDescending(c => c.Id).FirstAsync();
 
                 decimal subtotal = dto.Items.Sum(i => i.Quantity * i.UnitPrice);
                 decimal discountTotal = dto.Items.Sum(i => i.Discount);
@@ -278,20 +285,14 @@ namespace ForrajeriaJovitaAPI.Services
             var sale = await _context.Sales.FindAsync(id);
             if (sale == null) return null;
 
-            if (dto.PaymentStatus.HasValue)
-                sale.PaymentStatus = dto.PaymentStatus.Value;
-
-            if (dto.DeliveryCost.HasValue)
-                sale.DeliveryCost = dto.DeliveryCost.Value;
-
-            if (!string.IsNullOrWhiteSpace(dto.DeliveryAddress))
-                sale.DeliveryAddress = dto.DeliveryAddress;
-
-            if (!string.IsNullOrWhiteSpace(dto.PaymentMethod))
-                sale.PaymentMethod = dto.PaymentMethod;
-
-            if (!string.IsNullOrWhiteSpace(dto.FulfillmentMethod))
-                sale.FulfillmentMethod = dto.FulfillmentMethod;
+            if (dto.PaymentStatus.HasValue) sale.PaymentStatus = dto.PaymentStatus.Value;
+            if (dto.DeliveryCost.HasValue) sale.DeliveryCost = dto.DeliveryCost.Value;
+            if (!string.IsNullOrWhiteSpace(dto.DeliveryAddress)) sale.DeliveryAddress = dto.DeliveryAddress;
+            if (!string.IsNullOrWhiteSpace(dto.PaymentMethod)) sale.PaymentMethod = dto.PaymentMethod;
+            if (!string.IsNullOrWhiteSpace(dto.FulfillmentMethod)) sale.FulfillmentMethod = dto.FulfillmentMethod;
+            if (!string.IsNullOrWhiteSpace(dto.CustomerName)) sale.CustomerName = dto.CustomerName;
+            if (!string.IsNullOrWhiteSpace(dto.CustomerPhone)) sale.CustomerPhone = dto.CustomerPhone;
+            if (!string.IsNullOrWhiteSpace(dto.CustomerEmail)) sale.CustomerEmail = dto.CustomerEmail;
 
             await _context.SaveChangesAsync();
             return await GetSaleByIdAsync(id);
@@ -301,26 +302,32 @@ namespace ForrajeriaJovitaAPI.Services
         {
             var today = DateTime.Today;
             var tomorrow = today.AddDays(1);
-            var sales = await _context.Sales
-                .Where(s => s.SoldAt >= today && s.SoldAt < tomorrow && !s.IsDeleted)
-                .ToListAsync();
-
-            return new
-            {
-                Date = today,
-                TotalSales = sales.Count,
-                TotalAmount = sales.Sum(s => s.Total)
-            };
+            var sales = await _context.Sales.Where(s => s.SoldAt >= today && s.SoldAt < tomorrow && !s.IsDeleted).ToListAsync();
+            return new { Date = today, TotalSales = sales.Count, TotalAmount = sales.Sum(s => s.Total) };
         }
 
         public async Task<bool> DeleteSaleAsync(int id)
         {
             var sale = await _context.Sales.FirstOrDefaultAsync(s => s.Id == id);
             if (sale == null) return false;
-
             sale.IsDeleted = true;
             await _context.SaveChangesAsync();
             return true;
+        }
+
+        // Extrae nombre legible desde DeliveryAddress si CustomerName no existe
+        private static string? NameFromDeliveryAddress(string? delivery)
+        {
+            if (string.IsNullOrWhiteSpace(delivery)) return null;
+            var (name, phone) = ParseCustomerFromString(delivery);
+            if (!string.IsNullOrWhiteSpace(name)) return name;
+            var trimmed = delivery.Trim();
+            if (!System.Text.RegularExpressions.Regex.IsMatch(trimmed, @"^\d+$"))
+            {
+                var first = trimmed.Split(new[] { '-', ',' }, StringSplitOptions.RemoveEmptyEntries)[0].Trim();
+                if (first.Length > 0) return first;
+            }
+            return null;
         }
 
         private static SaleDto MapSaleToDto(Sale s)
@@ -342,6 +349,14 @@ namespace ForrajeriaJovitaAPI.Services
                 Reference = p.Reference
             }).ToList() ?? new List<SalePaymentDto>();
 
+            var customerName =
+                !string.IsNullOrWhiteSpace(s.CustomerName) ? s.CustomerName
+                : (s.Client != null && !string.IsNullOrWhiteSpace(s.Client.FullName) ? s.Client.FullName
+                : NameFromDeliveryAddress(s.DeliveryAddress)
+                );
+
+            if (string.IsNullOrWhiteSpace(customerName)) customerName = $"Orden #{s.Id}";
+
             return new SaleDto
             {
                 Id = s.Id,
@@ -350,9 +365,7 @@ namespace ForrajeriaJovitaAPI.Services
                 Subtotal = s.Subtotal,
                 DiscountTotal = s.DiscountTotal,
                 Total = s.Total,
-                CustomerName = string.IsNullOrWhiteSpace(s.CustomerName)
-                                ? (s.Client != null ? (s.Client.FullName ?? "Cliente") : (s.DeliveryAddress ?? "Cliente"))
-                                : s.CustomerName,
+                CustomerName = customerName,
                 ClientId = s.ClientId,
                 ClientName = s.Client != null ? s.Client.FullName : null,
                 DeliveryType = s.DeliveryType,
@@ -368,3 +381,4 @@ namespace ForrajeriaJovitaAPI.Services
         }
     }
 }
+
