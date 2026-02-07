@@ -1,11 +1,8 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using System.Collections.Generic;
 
 namespace ForrajeriaJovitaAPI.DTOs
 {
-    /// <summary>
-    /// DTO para crear una venta pública desde el carrito web.
-    /// Checkout invitado: requiere email o teléfono (uno al menos).
-    /// </summary>
     public class CreatePublicSaleDto
     {
         [Required(ErrorMessage = "Customer (dirección) es requerido")]
@@ -13,12 +10,10 @@ namespace ForrajeriaJovitaAPI.DTOs
         [MaxLength(500, ErrorMessage = "Customer no puede exceder 500 caracteres")]
         public string Customer { get; set; } = string.Empty;
 
-        // NEW: email para identificar/reusar cliente (opcional pero uno de email/phone requerido)
         [EmailAddress(ErrorMessage = "Email inválido")]
         [MaxLength(300)]
         public string? Email { get; set; }
 
-        // NEW: teléfono alternativo
         [MaxLength(50)]
         public string? Phone { get; set; }
 
@@ -36,5 +31,9 @@ namespace ForrajeriaJovitaAPI.DTOs
 
         [MaxLength(200, ErrorMessage = "PaymentReference no puede exceder 200 caracteres")]
         public string? PaymentReference { get; set; }
+
+        // NUEVO: fulfillment method (delivery | pickup)
+        [RegularExpression(@"^(delivery|pickup)$", ErrorMessage = "FulfillmentMethod debe ser 'delivery' o 'pickup'")]
+        public string FulfillmentMethod { get; set; } = "delivery";
     }
 }
