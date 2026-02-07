@@ -343,6 +343,7 @@ namespace ForrajeriaJovitaAPI.Services
                 CustomerName = string.IsNullOrWhiteSpace(s.CustomerName)
                                 ? (s.Client != null ? (s.Client.FullName ?? "Cliente") : (s.DeliveryAddress ?? "Cliente"))
                                 : s.CustomerName,
+                 
 
                 ClientId = s.ClientId,
                 ClientName = s.Client != null ? s.Client.FullName : null,
