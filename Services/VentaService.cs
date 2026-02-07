@@ -19,7 +19,6 @@ namespace ForrajeriaJovitaAPI.Services
             _context = context;
         }
 
-        // Listado de ventas con filtros
         public async Task<IEnumerable<SaleDto>> GetAllSalesAsync(
             DateTime? startDate = null,
             DateTime? endDate = null,
@@ -44,7 +43,6 @@ namespace ForrajeriaJovitaAPI.Services
             return sales.Select(MapSaleToDto);
         }
 
-        // Obtener venta por id
         public async Task<SaleDto?> GetSaleByIdAsync(int id)
         {
             var sale = await _context.Sales
@@ -57,7 +55,8 @@ namespace ForrajeriaJovitaAPI.Services
             return sale == null ? null : MapSaleToDto(sale);
         }
 
-        // Crear venta desde checkout público (sin cliente registrado)
+        // Checkout público (sin requerir cliente registrado).
+        // NOTE: no intenta leer dto.Payments porque tu CreatePublicSaleDto no lo define.
         public async Task<SaleDto> CreatePublicSaleAsync(CreatePublicSaleDto dto)
         {
             using var tx = await _context.Database.BeginTransactionAsync();
@@ -83,7 +82,10 @@ namespace ForrajeriaJovitaAPI.Services
                 var cashSession = await _context.CashSessions.OrderByDescending(c => c.Id).FirstAsync();
 
                 decimal subtotal = dto.Items.Sum(i => i.Quantity * i.UnitPrice);
-                decimal total = subtotal + (dto.ShippingCost ?? 0m);
+
+                // Aquí dto.ShippingCost es decimal (no nulo) según tus DTOs. No usar ??.
+                decimal shipping = dto.ShippingCost;
+                decimal total = subtotal + shipping;
 
                 var cashMovement = new CashMovement
                 {
@@ -136,7 +138,7 @@ namespace ForrajeriaJovitaAPI.Services
                     PaymentStatus = 0,
                     CreationDate = DateTime.UtcNow,
                     DeliveryAddress = dto.Customer,
-                    DeliveryCost = dto.ShippingCost,
+                    DeliveryCost = shipping,
                     PaymentMethod = dto.PaymentMethod,
                     FulfillmentMethod = dto.FulfillmentMethod
                 };
@@ -159,26 +161,7 @@ namespace ForrajeriaJovitaAPI.Services
                     });
                 }
 
-                // si el public checkout incluyera pagos (opcional)
-                if (dto.Payments != null && dto.Payments.Any())
-                {
-                    foreach (var payment in dto.Payments)
-                    {
-                        if (!Enum.IsDefined(typeof(PaymentMethod), payment.Method))
-                            throw new InvalidOperationException($"Método de pago inválido: {payment.Method}");
-
-                        var method = (PaymentMethod)payment.Method;
-                        _context.SalesPayments.Add(new SalePayment
-                        {
-                            SaleId = sale.Id,
-                            Method = method,
-                            Amount = payment.Amount,
-                            Reference = payment.Reference,
-                            CreationDate = DateTime.UtcNow
-                        });
-                    }
-                }
-
+                // Nota: no procesamos pagos aquí porque CreatePublicSaleDto no define Payments.
                 await _context.SaveChangesAsync();
                 await tx.CommitAsync();
 
@@ -191,7 +174,7 @@ namespace ForrajeriaJovitaAPI.Services
             }
         }
 
-        // Crear venta desde POS / admin (con cliente y pagos)
+        // Venta desde POS/admin (espera Payments en CreateSaleDto)
         public async Task<SaleDto> CreateSaleAsync(CreateSaleDto dto)
         {
             using var tx = await _context.Database.BeginTransactionAsync();
@@ -210,18 +193,15 @@ namespace ForrajeriaJovitaAPI.Services
                     stock.Quantity -= item.Quantity;
                 }
 
-                // Obtener usuario y sesión de caja actual
                 var user = await _context.Users.FirstAsync();
                 var cashSession = await _context.CashSessions
                     .OrderByDescending(c => c.Id)
                     .FirstAsync();
 
-                // Calcular totales
                 decimal subtotal = dto.Items.Sum(i => i.Quantity * i.UnitPrice);
                 decimal discountTotal = dto.Items.Sum(i => i.Discount);
                 decimal total = subtotal - discountTotal;
 
-                // Crear movimiento de caja
                 var cashMovement = new CashMovement
                 {
                     CashSessionId = cashSession.Id,
@@ -232,7 +212,6 @@ namespace ForrajeriaJovitaAPI.Services
                 _context.CashMovements.Add(cashMovement);
                 await _context.SaveChangesAsync();
 
-                // Crear venta
                 var sale = new Sale
                 {
                     CashMovementId = cashMovement.Id,
@@ -249,7 +228,6 @@ namespace ForrajeriaJovitaAPI.Services
                 _context.Sales.Add(sale);
                 await _context.SaveChangesAsync();
 
-                // Crear items de venta
                 foreach (var item in dto.Items)
                 {
                     _context.SalesItems.Add(new SaleItem
@@ -263,12 +241,10 @@ namespace ForrajeriaJovitaAPI.Services
                     });
                 }
 
-                // Crear pagos si se proporcionaron
                 if (dto.Payments != null && dto.Payments.Any())
                 {
                     foreach (var payment in dto.Payments)
                     {
-                        // Esperamos payment.Method como int que mappea al enum PaymentMethod
                         if (!Enum.IsDefined(typeof(PaymentMethod), payment.Method))
                             throw new InvalidOperationException($"Método de pago inválido: {payment.Method}");
 
@@ -297,7 +273,6 @@ namespace ForrajeriaJovitaAPI.Services
             }
         }
 
-        // Actualizar algunos campos de la venta
         public async Task<SaleDto?> UpdateSaleAsync(int id, UpdateSaleDto dto)
         {
             var sale = await _context.Sales.FindAsync(id);
@@ -322,7 +297,6 @@ namespace ForrajeriaJovitaAPI.Services
             return await GetSaleByIdAsync(id);
         }
 
-        // Resumen de ventas del día (interfaz pedía este método)
         public async Task<object> GetTodaySalesSummaryAsync()
         {
             var today = DateTime.Today;
@@ -339,7 +313,6 @@ namespace ForrajeriaJovitaAPI.Services
             };
         }
 
-        // Marcar venta como borrada (soft delete)
         public async Task<bool> DeleteSaleAsync(int id)
         {
             var sale = await _context.Sales.FirstOrDefaultAsync(s => s.Id == id);
@@ -350,7 +323,6 @@ namespace ForrajeriaJovitaAPI.Services
             return true;
         }
 
-        // Mapeo a DTO que usa tus SaleDto, SaleItemDto, SalePaymentDto
         private static SaleDto MapSaleToDto(Sale s)
         {
             var items = s.SalesItems?.Select(i => new SaleItemDto
@@ -378,27 +350,21 @@ namespace ForrajeriaJovitaAPI.Services
                 Subtotal = s.Subtotal,
                 DiscountTotal = s.DiscountTotal,
                 Total = s.Total,
-
                 CustomerName = string.IsNullOrWhiteSpace(s.CustomerName)
                                 ? (s.Client != null ? (s.Client.FullName ?? "Cliente") : (s.DeliveryAddress ?? "Cliente"))
                                 : s.CustomerName,
-
                 ClientId = s.ClientId,
                 ClientName = s.Client != null ? s.Client.FullName : null,
-
                 DeliveryType = s.DeliveryType,
                 DeliveryAddress = s.DeliveryAddress,
                 DeliveryCost = s.DeliveryCost,
                 DeliveryNote = s.DeliveryNote,
-
                 FulfillmentMethod = s.FulfillmentMethod,
                 PaymentStatus = s.PaymentStatus,
                 PaymentMethod = s.PaymentMethod,
-
                 Items = items,
                 Payments = payments
             };
         }
     }
 }
-
