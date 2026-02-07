@@ -10,7 +10,7 @@ namespace ForrajeriaJovitaAPI.Services
         Task<IEnumerable<SaleDto>> GetAllSalesAsync(DateTime? startDate = null, DateTime? endDate = null, int? sellerId = null);
         Task<SaleDto?> GetSaleByIdAsync(int id);
         Task<SaleDto> CreatePublicSaleAsync(CreatePublicSaleDto dto);
-        Task<SaleDto> CreateSaleAsync(CreateSaleDto dto); // <-- firma requerida
+        Task<SaleDto> CreateSaleAsync(CreateSaleDto dto);
         Task<SaleDto?> UpdateSaleAsync(int id, UpdateSaleDto dto);
         Task<object> GetTodaySalesSummaryAsync();
         Task<bool> DeleteSaleAsync(int id);

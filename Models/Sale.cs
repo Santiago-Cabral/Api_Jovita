@@ -18,9 +18,11 @@ namespace ForrajeriaJovitaAPI.Models
         public User? SellerUser { get; set; }
 
         public DateTime SoldAt { get; set; }
+
         public decimal Subtotal { get; set; }
         public decimal DiscountTotal { get; set; }
         public decimal Total { get; set; }
+
         public string? CustomerName { get; set; }
 
         public int? DeliveryType { get; set; }
@@ -28,12 +30,16 @@ namespace ForrajeriaJovitaAPI.Models
         public decimal? DeliveryCost { get; set; }
         public string? DeliveryNote { get; set; }
 
-        // 🔧 FIX: Mantener como INT para coincidir con la base de datos
+        // Mantener como INT para coincidir con la base de datos
         public int PaymentStatus { get; set; }
+
+        // ✅ PROPIEDADES AGREGADAS PARA FIX
+        public string? PaymentMethod { get; set; }
+        public string? FulfillmentMethod { get; set; }
 
         public DateTime CreationDate { get; set; } = DateTime.Now;
 
-        // ✅ SOFT DELETE
+        // SOFT DELETE
         public bool IsDeleted { get; set; } = false;
 
         public virtual ICollection<SaleItem> SalesItems { get; set; } = new List<SaleItem>();

@@ -1,31 +1,28 @@
-using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
+ï»¿using System.Collections.Generic;
 
 namespace ForrajeriaJovitaAPI.DTOs
 {
     public class CreateSaleDto
     {
-        // Id del cliente si la venta la hace un cliente registrado (opcional)
         public int? ClientId { get; set; }
+        public List<CreateSaleItemDto> Items { get; set; } = new List<CreateSaleItemDto>();
 
-        [Required]
-        public List<CreatePublicSaleItemDto> Items { get; set; } = new();
+        // âœ… PROPIEDAD AGREGADA PARA FIX
+        public List<CreateSalePaymentDto>? Payments { get; set; }
+    }
 
-        [Range(0, double.MaxValue)]
-        public decimal ShippingCost { get; set; } = 0;
+    public class CreateSaleItemDto
+    {
+        public int ProductId { get; set; }
+        public int Quantity { get; set; }
+        public decimal UnitPrice { get; set; }
+        public decimal Discount { get; set; }
+    }
 
-        // método de pago interno: cash | card | transfer
-        [Required]
-        [RegularExpression(@"^(cash|card|transfer|credit)$")]
-        public string PaymentMethod { get; set; } = "cash";
-
-        public string? PaymentReference { get; set; }
-
-        // fulfillment
-        [RegularExpression(@"^(delivery|pickup)$")]
-        public string FulfillmentMethod { get; set; } = "delivery";
-
-        // Delivery address opcional (para envíos)
-        public string? DeliveryAddress { get; set; }
+    public class CreateSalePaymentDto
+    {
+        public string Method { get; set; } = string.Empty;
+        public decimal Amount { get; set; }
+        public string? Reference { get; set; }
     }
 }
