@@ -19,24 +19,13 @@ namespace ForrajeriaJovitaAPI.Services
             _context = context;
         }
 
-        // GET ALL SALES
-        public async Task<IEnumerable<SaleDto>> GetAllSalesAsync(
-            DateTime? startDate = null,
-            DateTime? endDate = null,
-            int? sellerId = null)
+        public async Task<IEnumerable<SaleDto>> GetAllSalesAsync(DateTime? startDate = null, DateTime? endDate = null, int? sellerId = null)
         {
-            var query = _context.Sales
-                .Where(s => !s.IsDeleted)
-                .AsQueryable();
+            var query = _context.Sales.Where(s => !s.IsDeleted).AsQueryable();
 
-            if (startDate.HasValue)
-                query = query.Where(s => s.SoldAt >= startDate.Value);
-
-            if (endDate.HasValue)
-                query = query.Where(s => s.SoldAt <= endDate.Value);
-
-            if (sellerId.HasValue)
-                query = query.Where(s => s.SellerUserId == sellerId.Value);
+            if (startDate.HasValue) query = query.Where(s => s.SoldAt >= startDate.Value);
+            if (endDate.HasValue) query = query.Where(s => s.SoldAt <= endDate.Value);
+            if (sellerId.HasValue) query = query.Where(s => s.SellerUserId == sellerId.Value);
 
             var sales = await query
                 .Include(s => s.Client)
@@ -49,7 +38,6 @@ namespace ForrajeriaJovitaAPI.Services
             return sales.Select(MapSaleToDto);
         }
 
-        // GET SALE BY ID
         public async Task<SaleDto?> GetSaleByIdAsync(int id)
         {
             var sale = await _context.Sales
@@ -62,39 +50,30 @@ namespace ForrajeriaJovitaAPI.Services
             return sale == null ? null : MapSaleToDto(sale);
         }
 
-        // CREATE PUBLIC SALE (WEB)
         public async Task<SaleDto> CreatePublicSaleAsync(CreatePublicSaleDto dto)
         {
+            // (Mismo código que antes — lógica completa incluida)
             using var tx = await _context.Database.BeginTransactionAsync();
-
             try
             {
-                if (string.IsNullOrWhiteSpace(dto.Customer))
-                    throw new ArgumentException("Customer (dirección) es requerido.");
+                if (string.IsNullOrWhiteSpace(dto.Customer)) throw new ArgumentException("Customer (dirección) es requerido.");
 
-                // 1) Check and decrement stock from central branch
                 foreach (var item in dto.Items)
                 {
                     var stock = await _context.ProductsStocks.FirstOrDefaultAsync(s =>
                         s.ProductId == item.ProductId &&
                         s.BranchId == CASA_CENTRAL_BRANCH_ID);
 
-                    if (stock == null || stock.Quantity < item.Quantity)
-                        throw new InvalidOperationException("Stock insuficiente");
-
+                    if (stock == null || stock.Quantity < item.Quantity) throw new InvalidOperationException("Stock insuficiente");
                     stock.Quantity -= item.Quantity;
                 }
 
-                // 2) Base data
                 var user = await _context.Users.FirstAsync();
-                var cashSession = await _context.CashSessions
-                    .OrderByDescending(c => c.Id)
-                    .FirstAsync();
+                var cashSession = await _context.CashSessions.OrderByDescending(c => c.Id).FirstAsync();
 
                 decimal subtotal = dto.Items.Sum(i => i.Quantity * i.UnitPrice);
                 decimal total = subtotal + dto.ShippingCost;
 
-                // 3) Cash movement
                 var cashMovement = new CashMovement
                 {
                     CashSessionId = cashSession.Id,
@@ -106,21 +85,14 @@ namespace ForrajeriaJovitaAPI.Services
                 _context.CashMovements.Add(cashMovement);
                 await _context.SaveChangesAsync();
 
-                // 4) Try to find or create client if email/phone provided
                 Client? client = null;
                 if (!string.IsNullOrWhiteSpace(dto.Email) || !string.IsNullOrWhiteSpace(dto.Phone))
                 {
                     if (!string.IsNullOrWhiteSpace(dto.Email))
-                    {
-                        client = await _context.Clients
-                            .FirstOrDefaultAsync(c => !c.IsDeleted && c.Email == dto.Email);
-                    }
+                        client = await _context.Clients.FirstOrDefaultAsync(c => !c.IsDeleted && c.Email == dto.Email);
 
                     if (client == null && !string.IsNullOrWhiteSpace(dto.Phone))
-                    {
-                        client = await _context.Clients
-                            .FirstOrDefaultAsync(c => !c.IsDeleted && c.Phone == dto.Phone);
-                    }
+                        client = await _context.Clients.FirstOrDefaultAsync(c => !c.IsDeleted && c.Phone == dto.Phone);
 
                     if (client == null)
                     {
@@ -141,7 +113,6 @@ namespace ForrajeriaJovitaAPI.Services
                     }
                 }
 
-                // 5) Create Sale and associate client + delivery address
                 var sale = new Sale
                 {
                     CashMovementId = cashMovement.Id,
@@ -149,25 +120,21 @@ namespace ForrajeriaJovitaAPI.Services
                     SoldAt = DateTime.UtcNow,
                     Subtotal = subtotal,
                     DiscountTotal = 0,
-                    CustomerName = dto.Customer,        // <-- importante
+                    CustomerName = dto.Customer,
                     Total = total,
-                    PaymentStatus = 0,                  // pendiente por defecto
+                    PaymentStatus = 0, // pendiente por defecto
                     CreationDate = DateTime.UtcNow,
                     DeliveryAddress = dto.Customer,
                     DeliveryCost = dto.ShippingCost,
-
-                    // AGREGAMOS ESTOS CAMPOS para exponerlos al frontend
                     PaymentMethod = dto.PaymentMethod,
                     FulfillmentMethod = dto.FulfillmentMethod
                 };
 
-                if (client != null)
-                    sale.ClientId = client.Id;
+                if (client != null) sale.ClientId = client.Id;
 
                 _context.Sales.Add(sale);
                 await _context.SaveChangesAsync();
 
-                // 6) Items
                 foreach (var item in dto.Items)
                 {
                     _context.SalesItems.Add(new SaleItem
@@ -182,7 +149,6 @@ namespace ForrajeriaJovitaAPI.Services
                 }
 
                 await _context.SaveChangesAsync();
-
                 await tx.CommitAsync();
 
                 return (await GetSaleByIdAsync(sale.Id))!;
@@ -194,63 +160,46 @@ namespace ForrajeriaJovitaAPI.Services
             }
         }
 
-        // UPDATE SALE
+        // IMPLEMENTACIÓN requerida por la interfaz (debe existir la firma exacta)
+        public async Task<SaleDto> CreateSaleAsync(CreateSaleDto dto)
+        {
+            // Aquí podés implementar la venta desde caja interna.
+            // Por ahora lanzo NotImplemented para que quede explícito.
+            throw new NotImplementedException("CreateSaleAsync aún no implementado - implementar según reglas de caja.");
+        }
+
         public async Task<SaleDto?> UpdateSaleAsync(int id, UpdateSaleDto dto)
         {
             var sale = await _context.Sales.FindAsync(id);
             if (sale == null) return null;
 
-            if (dto.PaymentStatus.HasValue)
-                sale.PaymentStatus = dto.PaymentStatus.Value;
-
-            if (dto.DeliveryCost.HasValue)
-                sale.DeliveryCost = dto.DeliveryCost.Value;
-
-            if (!string.IsNullOrWhiteSpace(dto.DeliveryAddress))
-                sale.DeliveryAddress = dto.DeliveryAddress;
-
-            if (!string.IsNullOrWhiteSpace(dto.PaymentMethod))
-                sale.PaymentMethod = dto.PaymentMethod;
-
-            if (!string.IsNullOrWhiteSpace(dto.FulfillmentMethod))
-                sale.FulfillmentMethod = dto.FulfillmentMethod;
+            if (dto.PaymentStatus.HasValue) sale.PaymentStatus = dto.PaymentStatus.Value;
+            if (dto.DeliveryCost.HasValue) sale.DeliveryCost = dto.DeliveryCost.Value;
+            if (!string.IsNullOrWhiteSpace(dto.DeliveryAddress)) sale.DeliveryAddress = dto.DeliveryAddress;
+            if (!string.IsNullOrWhiteSpace(dto.PaymentMethod)) sale.PaymentMethod = dto.PaymentMethod;
+            if (!string.IsNullOrWhiteSpace(dto.FulfillmentMethod)) sale.FulfillmentMethod = dto.FulfillmentMethod;
 
             await _context.SaveChangesAsync();
             return await GetSaleByIdAsync(id);
         }
 
-        // TODAY SUMMARY
         public async Task<object> GetTodaySalesSummaryAsync()
         {
             var today = DateTime.Today;
             var tomorrow = today.AddDays(1);
-
-            var sales = await _context.Sales
-                .Where(s => s.SoldAt >= today && s.SoldAt < tomorrow && !s.IsDeleted)
-                .ToListAsync();
-
-            return new
-            {
-                Date = today,
-                TotalSales = sales.Count,
-                TotalAmount = sales.Sum(s => s.Total)
-            };
+            var sales = await _context.Sales.Where(s => s.SoldAt >= today && s.SoldAt < tomorrow && !s.IsDeleted).ToListAsync();
+            return new { Date = today, TotalSales = sales.Count, TotalAmount = sales.Sum(s => s.Total) };
         }
 
-        // SOFT DELETE
         public async Task<bool> DeleteSaleAsync(int id)
         {
             var sale = await _context.Sales.FirstOrDefaultAsync(s => s.Id == id);
-
-            if (sale == null)
-                return false;
-
+            if (sale == null) return false;
             sale.IsDeleted = true;
             await _context.SaveChangesAsync();
             return true;
         }
 
-        // MAPPER
         private static SaleDto MapSaleToDto(Sale s)
         {
             var items = s.SalesItems?.Select(i => new SaleItemDto
@@ -266,21 +215,10 @@ namespace ForrajeriaJovitaAPI.Services
             var payments = s.SalesPayments?.Select(p =>
             {
                 string methodName;
-                try
-                {
-                    methodName = p.Method != null ? p.Method.ToString() : p.Reference ?? string.Empty;
-                }
-                catch
-                {
-                    methodName = p.Reference ?? string.Empty;
-                }
+                try { methodName = p.Method != null ? p.Method.ToString() : p.Reference ?? string.Empty; }
+                catch { methodName = p.Reference ?? string.Empty; }
 
-                return new SalePaymentDto
-                {
-                    MethodName = methodName,
-                    Amount = p.Amount,
-                    Reference = p.Reference
-                };
+                return new SalePaymentDto { MethodName = methodName, Amount = p.Amount, Reference = p.Reference };
             }).ToList() ?? new List<SalePaymentDto>();
 
             return new SaleDto
@@ -292,7 +230,6 @@ namespace ForrajeriaJovitaAPI.Services
                 DiscountTotal = s.DiscountTotal,
                 Total = s.Total,
 
-                // ---- AHORA EXPONEMOS LOS CAMPOS IMPORTANTES ----
                 CustomerName = string.IsNullOrWhiteSpace(s.CustomerName)
                                 ? (s.Client != null ? (s.Client.FullName ?? "Cliente") : (s.DeliveryAddress ?? "Cliente"))
                                 : s.CustomerName,
@@ -305,7 +242,7 @@ namespace ForrajeriaJovitaAPI.Services
                 DeliveryCost = s.DeliveryCost,
                 DeliveryNote = s.DeliveryNote,
 
-                FulfillmentMethod = s.FulfillmentMethod,   // e.g. "delivery" | "pickup"
+                FulfillmentMethod = s.FulfillmentMethod,
                 PaymentStatus = s.PaymentStatus,
                 PaymentMethod = s.PaymentMethod,
 
