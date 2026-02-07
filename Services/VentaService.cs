@@ -162,7 +162,7 @@ namespace ForrajeriaJovitaAPI.Services
                     Subtotal = subtotal,
                     DiscountTotal = 0,
                     Total = total,
-                    PaymentStatus = 1,
+                    PaymentStatus = 0,
                     CreationDate = DateTime.UtcNow,
                     DeliveryAddress = dto.Customer,
                     DeliveryCost = dto.ShippingCost
