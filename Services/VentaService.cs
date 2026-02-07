@@ -242,7 +242,7 @@ namespace ForrajeriaJovitaAPI.Services
                         _context.SalesPayments.Add(new SalePayment
                         {
                             SaleId = sale.Id,
-                            Method = (PaymentMethod)Enum.Parse(typeof(PaymentMethod), payment.Method, true),
+                            Method = (PaymentMethod)Enum.Parse(typeof(PaymentMethod), payment.Method),
                             Amount = payment.Amount,
                             Reference = payment.Reference,
                             CreationDate = DateTime.UtcNow
