@@ -125,7 +125,7 @@ namespace ForrajeriaJovitaAPI.Services
                     DiscountTotal = 0,
                     CustomerName = dto.Customer,
                     Total = total,
-                    PaymentStatus = 0, // pendiente por defecto
+                    PaymentStatus = 0,
                     CreationDate = DateTime.UtcNow,
                     DeliveryAddress = dto.Customer,
                     DeliveryCost = dto.ShippingCost,
@@ -239,14 +239,18 @@ namespace ForrajeriaJovitaAPI.Services
                 {
                     foreach (var payment in dto.Payments)
                     {
-                        _context.SalesPayments.Add(new SalePayment
+                        // Usar TryParse para evitar errores de conversión
+                        if (Enum.TryParse<PaymentMethod>(payment.Method, out var paymentMethod))
                         {
-                            SaleId = sale.Id,
-                            Method = (PaymentMethod)Enum.Parse(typeof(PaymentMethod), payment.Method),
-                            Amount = payment.Amount,
-                            Reference = payment.Reference,
-                            CreationDate = DateTime.UtcNow
-                        });
+                            _context.SalesPayments.Add(new SalePayment
+                            {
+                                SaleId = sale.Id,
+                                Method = paymentMethod,
+                                Amount = payment.Amount,
+                                Reference = payment.Reference,
+                                CreationDate = DateTime.UtcNow
+                            });
+                        }
                     }
                 }
 
@@ -319,7 +323,7 @@ namespace ForrajeriaJovitaAPI.Services
                 ProductId = i.ProductId,
                 ProductName = i.Product != null ? (i.Product.Name ?? "") : string.Empty,
                 UnitPrice = i.UnitPrice,
-                Quantity = (int)i.Quantity,  // Cast decimal to int
+                Quantity = (int)i.Quantity,
                 Discount = i.Discount,
                 Total = (i.UnitPrice * i.Quantity) - i.Discount
             }).ToList() ?? new List<SaleItemDto>();
@@ -361,4 +365,5 @@ namespace ForrajeriaJovitaAPI.Services
             };
         }
     }
+}
 }
