@@ -239,13 +239,14 @@ namespace ForrajeriaJovitaAPI.Services
                 {
                     foreach (var payment in dto.Payments)
                     {
-                        // Usar TryParse para evitar errores de conversión
-                        if (Enum.TryParse<PaymentMethod>(payment.Method, out var paymentMethod))
+                        // Convertir el método de pago de manera segura
+                        PaymentMethod method;
+                        if (Enum.TryParse(payment.Method, true, out method))
                         {
                             _context.SalesPayments.Add(new SalePayment
                             {
                                 SaleId = sale.Id,
-                                Method = paymentMethod,
+                                Method = method,
                                 Amount = payment.Amount,
                                 Reference = payment.Reference,
                                 CreationDate = DateTime.UtcNow
