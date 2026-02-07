@@ -242,7 +242,7 @@ namespace ForrajeriaJovitaAPI.Services
                         _context.SalesPayments.Add(new SalePayment
                         {
                             SaleId = sale.Id,
-                            Method = Enum.Parse<PaymentMethod>(payment.Method),
+                            Method = (PaymentMethod)Enum.Parse(typeof(PaymentMethod), payment.Method, true),
                             Amount = payment.Amount,
                             Reference = payment.Reference,
                             CreationDate = DateTime.UtcNow
@@ -319,7 +319,7 @@ namespace ForrajeriaJovitaAPI.Services
                 ProductId = i.ProductId,
                 ProductName = i.Product != null ? (i.Product.Name ?? "") : string.Empty,
                 UnitPrice = i.UnitPrice,
-                Quantity = i.Quantity,
+                Quantity = (int)i.Quantity,  // Cast decimal to int
                 Discount = i.Discount,
                 Total = (i.UnitPrice * i.Quantity) - i.Discount
             }).ToList() ?? new List<SaleItemDto>();
@@ -343,7 +343,6 @@ namespace ForrajeriaJovitaAPI.Services
                 CustomerName = string.IsNullOrWhiteSpace(s.CustomerName)
                                 ? (s.Client != null ? (s.Client.FullName ?? "Cliente") : (s.DeliveryAddress ?? "Cliente"))
                                 : s.CustomerName,
-                 
 
                 ClientId = s.ClientId,
                 ClientName = s.Client != null ? s.Client.FullName : null,
