@@ -21,6 +21,7 @@ namespace ForrajeriaJovitaAPI.Models
         public decimal Subtotal { get; set; }
         public decimal DiscountTotal { get; set; }
         public decimal Total { get; set; }
+        public string? CustomerName { get; set; }
 
         public int? DeliveryType { get; set; }
         public string? DeliveryAddress { get; set; }

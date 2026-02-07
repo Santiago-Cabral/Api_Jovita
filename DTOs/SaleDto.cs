@@ -14,6 +14,8 @@ namespace ForrajeriaJovitaAPI.DTOs
         public decimal Subtotal { get; set; }
         public decimal DiscountTotal { get; set; }
         public decimal Total { get; set; }
+        public string? CustomerName { get; set; }
+
 
         // Cliente
         public int? ClientId { get; set; }

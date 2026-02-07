@@ -161,6 +161,7 @@ namespace ForrajeriaJovitaAPI.Services
                     SoldAt = DateTime.UtcNow,
                     Subtotal = subtotal,
                     DiscountTotal = 0,
+                    CustomerName = dto.Customer, // 🔥 ACÁ
                     Total = total,
                     PaymentStatus = 0,
                     CreationDate = DateTime.UtcNow,
