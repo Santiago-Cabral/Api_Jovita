@@ -124,7 +124,9 @@ builder.Services.AddCors(options =>
     {
         policy.WithOrigins(
                 "http://localhost:5173",
-                "https://forrajeria-jovita.vercel.app"
+                "https://forrajeria-jovita.vercel.app",
+                "https://www.jovita.store/",
+                "https://www.jovita.store"
             )
             .AllowAnyHeader()
             .AllowAnyMethod()
