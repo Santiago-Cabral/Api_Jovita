@@ -318,6 +318,16 @@ namespace ForrajeriaJovitaAPI.Data
                       .HasForeignKey(e => e.SaleId)
                       .OnDelete(DeleteBehavior.Restrict);
             });
+
+            // Setting
+            modelBuilder.Entity<Setting>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.HasIndex(e => e.Key).IsUnique();
+                entity.Property(e => e.Key).IsRequired().HasMaxLength(100);
+                entity.Property(e => e.Value).IsRequired().HasColumnType("nvarchar(max)");
+                entity.Property(e => e.UpdatedBy).HasMaxLength(100);
+            });
         }
     }
 }
