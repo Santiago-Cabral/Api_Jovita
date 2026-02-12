@@ -33,7 +33,8 @@ namespace ForrajeriaJovitaAPI.DTOs
         public string? PaymentReference { get; set; }
 
         // NUEVO: fulfillment method (delivery | pickup)
-        [RegularExpression(@"^(delivery|pickup)$", ErrorMessage = "FulfillmentMethod debe ser 'delivery' o 'pickup'")]
+        [RegularExpression(@"(?i)^(delivery|pickup)$", ErrorMessage = "FulfillmentMethod debe ser 'delivery' o 'pickup'")]
+
         public string FulfillmentMethod { get; set; } = "delivery";
     }
 }

@@ -75,6 +75,14 @@ namespace ForrajeriaJovitaAPI.Services
                 if (string.IsNullOrWhiteSpace(dto.Customer))
                     throw new ArgumentException("Customer (dirección) es requerido.");
 
+                // NORMALIZAR fulfillment
+                var fulfillment = (dto.FulfillmentMethod ?? "delivery")
+                    .Trim()
+                    .ToLowerInvariant();
+
+                if (fulfillment != "delivery" && fulfillment != "pickup")
+                    fulfillment = "delivery";
+
                 // Descontar stock
                 foreach (var item in dto.Items)
                 {
@@ -88,7 +96,9 @@ namespace ForrajeriaJovitaAPI.Services
                 }
 
                 var user = await _context.Users.FirstAsync();
-                var cashSession = await _context.CashSessions.OrderByDescending(c => c.Id).FirstAsync();
+                var cashSession = await _context.CashSessions
+                    .OrderByDescending(c => c.Id)
+                    .FirstAsync();
 
                 decimal subtotal = dto.Items.Sum(i => i.Quantity * i.UnitPrice);
                 decimal shipping = dto.ShippingCost;
@@ -101,25 +111,41 @@ namespace ForrajeriaJovitaAPI.Services
                     Amount = total,
                     CreationDate = DateTime.UtcNow
                 };
+
                 _context.CashMovements.Add(cashMovement);
                 await _context.SaveChangesAsync();
 
-                // Buscar o crear cliente por email/phone si vienen
+                // Buscar o crear cliente
                 Client? client = null;
-                if (!string.IsNullOrWhiteSpace(dto.Email) || !string.IsNullOrWhiteSpace(dto.Phone))
+
+                if (!string.IsNullOrWhiteSpace(dto.Email) ||
+                    !string.IsNullOrWhiteSpace(dto.Phone))
                 {
                     if (!string.IsNullOrWhiteSpace(dto.Email))
-                        client = await _context.Clients.FirstOrDefaultAsync(c => !c.IsDeleted && c.Email == dto.Email);
+                    {
+                        client = await _context.Clients
+                            .FirstOrDefaultAsync(c =>
+                                !c.IsDeleted && c.Email == dto.Email);
+                    }
 
                     if (client == null && !string.IsNullOrWhiteSpace(dto.Phone))
-                        client = await _context.Clients.FirstOrDefaultAsync(c => !c.IsDeleted && c.Phone == dto.Phone);
+                    {
+                        client = await _context.Clients
+                            .FirstOrDefaultAsync(c =>
+                                !c.IsDeleted && c.Phone == dto.Phone);
+                    }
 
                     if (client == null)
                     {
                         client = new Client
                         {
-                            FullName = !string.IsNullOrWhiteSpace(dto.Email) ? dto.Email! :
-                                       (!string.IsNullOrWhiteSpace(dto.Phone) ? dto.Phone! : "Cliente web"),
+                            FullName =
+                                !string.IsNullOrWhiteSpace(dto.Email)
+                                    ? dto.Email!
+                                    : (!string.IsNullOrWhiteSpace(dto.Phone)
+                                        ? dto.Phone!
+                                        : "Cliente web"),
+
                             Email = dto.Email,
                             Phone = dto.Phone ?? string.Empty,
                             Amount = 0,
@@ -133,30 +159,52 @@ namespace ForrajeriaJovitaAPI.Services
                     }
                 }
 
-                // Parsear dto.Customer si tiene "Nombre - Telefono"
-                var (parsedName, parsedPhone) = ParseCustomerFromString(dto.Customer);
+                var (parsedName, parsedPhone) =
+                    ParseCustomerFromString(dto.Customer);
 
                 var sale = new Sale
                 {
                     CashMovementId = cashMovement.Id,
                     SellerUserId = user.Id,
                     SoldAt = DateTime.UtcNow,
+
                     Subtotal = subtotal,
                     DiscountTotal = 0,
-                    // Guardar campos explícitos
-                    CustomerName = !string.IsNullOrWhiteSpace(parsedName) ? parsedName : dto.Customer,
-                    CustomerPhone = string.IsNullOrWhiteSpace(dto.Phone) ? parsedPhone : dto.Phone,
-                    CustomerEmail = dto.Email,
                     Total = total,
+
+                    CustomerName =
+                        !string.IsNullOrWhiteSpace(parsedName)
+                            ? parsedName
+                            : dto.Customer,
+
+                    CustomerPhone =
+                        string.IsNullOrWhiteSpace(dto.Phone)
+                            ? parsedPhone
+                            : dto.Phone,
+
+                    CustomerEmail = dto.Email,
+
                     PaymentStatus = 0,
                     CreationDate = DateTime.UtcNow,
-                    DeliveryAddress = dto.Customer,
-                    DeliveryCost = shipping,
-                    PaymentMethod = dto.PaymentMethod,
-                    FulfillmentMethod = dto.FulfillmentMethod
+
+                    // IMPORTANTE
+                    FulfillmentMethod = fulfillment,
+
+                    DeliveryCost =
+                        fulfillment == "pickup"
+                            ? 0
+                            : shipping,
+
+                    DeliveryAddress =
+                        fulfillment == "pickup"
+                            ? null
+                            : dto.Customer,
+
+                    PaymentMethod = dto.PaymentMethod
                 };
 
-                if (client != null) sale.ClientId = client.Id;
+                if (client != null)
+                    sale.ClientId = client.Id;
 
                 _context.Sales.Add(sale);
                 await _context.SaveChangesAsync();
@@ -185,6 +233,7 @@ namespace ForrajeriaJovitaAPI.Services
                 throw;
             }
         }
+
 
         public async Task<SaleDto> CreateSaleAsync(CreateSaleDto dto)
         {
@@ -289,7 +338,23 @@ namespace ForrajeriaJovitaAPI.Services
             if (dto.DeliveryCost.HasValue) sale.DeliveryCost = dto.DeliveryCost.Value;
             if (!string.IsNullOrWhiteSpace(dto.DeliveryAddress)) sale.DeliveryAddress = dto.DeliveryAddress;
             if (!string.IsNullOrWhiteSpace(dto.PaymentMethod)) sale.PaymentMethod = dto.PaymentMethod;
-            if (!string.IsNullOrWhiteSpace(dto.FulfillmentMethod)) sale.FulfillmentMethod = dto.FulfillmentMethod;
+
+            // Normalizar fulfillment si se envía
+            if (!string.IsNullOrWhiteSpace(dto.FulfillmentMethod))
+            {
+                var f = dto.FulfillmentMethod.Trim().ToLowerInvariant();
+                if (f == "pickup" || f == "delivery")
+                {
+                    sale.FulfillmentMethod = f;
+                    // ajustar delivery fields según fulfillment
+                    if (f == "pickup")
+                    {
+                        sale.DeliveryCost = 0;
+                        sale.DeliveryAddress = null;
+                    }
+                }
+            }
+
             if (!string.IsNullOrWhiteSpace(dto.CustomerName)) sale.CustomerName = dto.CustomerName;
             if (!string.IsNullOrWhiteSpace(dto.CustomerPhone)) sale.CustomerPhone = dto.CustomerPhone;
             if (!string.IsNullOrWhiteSpace(dto.CustomerEmail)) sale.CustomerEmail = dto.CustomerEmail;
@@ -357,6 +422,27 @@ namespace ForrajeriaJovitaAPI.Services
 
             if (string.IsNullOrWhiteSpace(customerName)) customerName = $"Orden #{s.Id}";
 
+            // Normalizar fulfillment method
+            string fulfillment = "delivery";
+            if (!string.IsNullOrWhiteSpace(s.FulfillmentMethod))
+            {
+                var f = s.FulfillmentMethod.Trim().ToLowerInvariant();
+                if (f == "pickup" || f == "delivery")
+                    fulfillment = f;
+            }
+
+            // Si la DB no tiene fulfillment pero DeliveryType/DeliveryAddress sugieren pickup, podrías extender aquí.
+            // Por ahora, fallback seguro a "delivery" cuando no esté bien definido.
+
+            // Ajustar delivery fields según fulfillment para la respuesta
+            string? deliveryAddress = s.DeliveryAddress;
+            decimal? deliveryCost = s.DeliveryCost;
+            if (fulfillment == "pickup")
+            {
+                deliveryAddress = null;
+                deliveryCost = 0;
+            }
+
             return new SaleDto
             {
                 Id = s.Id,
@@ -369,10 +455,10 @@ namespace ForrajeriaJovitaAPI.Services
                 ClientId = s.ClientId,
                 ClientName = s.Client != null ? s.Client.FullName : null,
                 DeliveryType = s.DeliveryType,
-                DeliveryAddress = s.DeliveryAddress,
-                DeliveryCost = s.DeliveryCost,
+                DeliveryAddress = deliveryAddress,
+                DeliveryCost = deliveryCost,
                 DeliveryNote = s.DeliveryNote,
-                FulfillmentMethod = s.FulfillmentMethod,
+                FulfillmentMethod = fulfillment,
                 PaymentStatus = s.PaymentStatus,
                 PaymentMethod = s.PaymentMethod,
                 Items = items,
@@ -381,4 +467,3 @@ namespace ForrajeriaJovitaAPI.Services
         }
     }
 }
-

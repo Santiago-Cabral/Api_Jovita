@@ -27,7 +27,8 @@ namespace ForrajeriaJovitaAPI.DTOs
         public string? DeliveryNote { get; set; }
 
         // Delivery / Pickup en string (más legible en frontend)
-        public string? FulfillmentMethod { get; set; }      // e.g. "delivery" | "pickup"
+        public string FulfillmentMethod { get; set; } = "delivery";
+
 
         // Pago
         public int? PaymentStatus { get; set; }             // 0=pendiente,1=pagado,2=entregado
