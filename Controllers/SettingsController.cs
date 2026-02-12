@@ -5,7 +5,7 @@ using System.Security.Claims;
 using System.Text.Json;
 using ForrajeriaJovitaAPI.Data;
 using ForrajeriaJovitaAPI.Models;
-using ForrajeriaJovitaAPI.Dtos;
+using ForrajeriaJovitaAPI.Dtos; // <- SettingsDto + SettingsMapper
 
 namespace ForrajeriaJovitaAPI.Controllers
 {
@@ -28,7 +28,8 @@ namespace ForrajeriaJovitaAPI.Controllers
         }
 
         /// <summary>
-        /// GET /api/Settings - Obtener configuración pública tipada
+        /// GET /api/Settings - Obtener configuración tipada (pública)
+        /// Devuelve SettingsDto con tipos correctos (bool, number, array).
         /// </summary>
         [HttpGet]
         [AllowAnonymous]
@@ -46,6 +47,7 @@ namespace ForrajeriaJovitaAPI.Controllers
                     return Ok(SettingsDto.Defaults());
                 }
 
+                // Usamos el mapper para convertir la tabla (key -> json string) a SettingsDto
                 var dto = SettingsMapper.FromDictionary(raw);
                 return Ok(dto);
             }
@@ -58,19 +60,18 @@ namespace ForrajeriaJovitaAPI.Controllers
 
         /// <summary>
         /// PUT /api/Settings - Actualizar configuración (solo admin)
+        /// Recibe SettingsDto y guarda cada propiedad como JSON en la tabla Settings.
         /// </summary>
         [HttpPut]
         [Authorize]
         public async Task<IActionResult> UpdateSettings([FromBody] SettingsDto updates)
         {
             if (updates == null)
-            {
                 return BadRequest(new { message = "Payload inválido" });
-            }
 
             try
             {
-                // Verificar rol del usuario
+                // Validar rol admin
                 var userRole = User.FindFirst(ClaimTypes.Role)?.Value?.ToLower();
                 if (userRole != "admin" && userRole != "administrador" && userRole != "administrador/a")
                 {
@@ -81,7 +82,7 @@ namespace ForrajeriaJovitaAPI.Controllers
                 var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "system";
                 _logger.LogInformation("Usuario {UserId} actualizando settings", userId);
 
-                // Convertir DTO a diccionario (key -> JSON string)
+                // Convertimos el DTO a diccionario key -> json string
                 var dict = ToDictionary(updates);
 
                 foreach (var kvp in dict)
@@ -111,7 +112,12 @@ namespace ForrajeriaJovitaAPI.Controllers
 
                 await _context.SaveChangesAsync();
                 _logger.LogInformation("Settings guardados exitosamente por {UserId}", userId);
-                return Ok(new { message = "Settings guardados exitosamente" });
+
+                // Devuelve el estado actual canonical (recomendado) para que el frontend reciba exactamente lo que hay en DB
+                var raw = await _context.Settings.AsNoTracking().ToDictionaryAsync(s => s.Key, s => s.Value);
+                var dto = SettingsMapper.FromDictionary(raw);
+
+                return Ok(dto);
             }
             catch (Exception ex)
             {
@@ -145,7 +151,8 @@ namespace ForrajeriaJovitaAPI.Controllers
                     await _context.SaveChangesAsync();
                 }
 
-                return Ok(new { message = "Settings reseteados a valores por defecto" });
+                // Devolver defaults inmediatos al frontend
+                return Ok(SettingsDto.Defaults());
             }
             catch (Exception ex)
             {
@@ -158,13 +165,12 @@ namespace ForrajeriaJovitaAPI.Controllers
 
         /// <summary>
         /// Convierte SettingsDto a diccionario key->jsonString para almacenar en la tabla Settings.
-        /// Las claves usadas son las mismas que las propiedades JSON (camelCase).
+        /// Usamos nombres en camelCase (coincide con los nombres JSON que usa el frontend).
         /// </summary>
         private Dictionary<string, string> ToDictionary(SettingsDto dto)
         {
             var d = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-            // Strings
             d["storeName"] = JsonSerializer.Serialize(dto.StoreName, _jsonOpts);
             d["email"] = JsonSerializer.Serialize(dto.Email, _jsonOpts);
             d["phone"] = JsonSerializer.Serialize(dto.Phone, _jsonOpts);
@@ -172,13 +178,11 @@ namespace ForrajeriaJovitaAPI.Controllers
             d["description"] = JsonSerializer.Serialize(dto.Description, _jsonOpts);
             d["storeLocation"] = JsonSerializer.Serialize(dto.StoreLocation, _jsonOpts);
 
-            // Booleans / numbers
             d["freeShipping"] = JsonSerializer.Serialize(dto.FreeShipping, _jsonOpts);
             d["freeShippingMinimum"] = JsonSerializer.Serialize(dto.FreeShippingMinimum, _jsonOpts);
             d["shippingCost"] = JsonSerializer.Serialize(dto.ShippingCost, _jsonOpts);
             d["deliveryTime"] = JsonSerializer.Serialize(dto.DeliveryTime, _jsonOpts);
 
-            // Shipping zones (array)
             d["shippingZones"] = JsonSerializer.Serialize(dto.ShippingZones ?? new List<ShippingZoneDto>(), _jsonOpts);
 
             d["defaultShippingPrice"] = JsonSerializer.Serialize(dto.DefaultShippingPrice, _jsonOpts);
