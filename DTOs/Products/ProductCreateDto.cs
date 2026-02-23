@@ -15,5 +15,6 @@ namespace ForrajeriaJovitaAPI.DTOs.Products
         public int CategoryId { get; set; }
 
         public bool IsActived { get; set; } = true;
+        public bool IsFeatured { get; set; } = false;
     }
 }

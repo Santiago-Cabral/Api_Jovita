@@ -19,6 +19,7 @@ namespace ForrajeriaJovitaAPI.Models
 
         public bool IsDeleted { get; set; }
         public bool IsActived { get; set; }
+        public bool IsFeatured { get; set; } = false;
         public DateTime? UpdateDate { get; set; }
         public DateTime CreationDate { get; set; } = DateTime.Now;
 

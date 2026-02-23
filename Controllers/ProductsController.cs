@@ -14,9 +14,8 @@ namespace ForrajeriaJovitaAPI.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    [AllowAnonymous] // 👈 ESTA LÍNEA
+    [AllowAnonymous]
     public class ProductsController : ControllerBase
-
     {
         private readonly ForrajeriaContext _context;
         private readonly IStockService _stockService;
@@ -33,7 +32,6 @@ namespace ForrajeriaJovitaAPI.Controllers
         [HttpGet]
         public async Task<ActionResult<IEnumerable<ProductResponseDto>>> GetProducts()
         {
-            // 1) Traer productos + categoría
             var products = await _context.Products
                 .Where(p => !p.IsDeleted)
                 .Include(p => p.Category)
@@ -42,12 +40,10 @@ namespace ForrajeriaJovitaAPI.Controllers
 
             var productIds = products.Select(p => p.Id).ToList();
 
-            // 2) Diccionario de stock (por defecto 0)
             var stockDict = new Dictionary<int, decimal>();
 
             try
             {
-                // Intentar leer el stock; si la tabla no existe o hay error, caemos al catch
                 var stockRows = await _context.ProductsStocks
                     .Where(s => productIds.Contains(s.ProductId))
                     .AsNoTracking()
@@ -60,13 +56,8 @@ namespace ForrajeriaJovitaAPI.Controllers
                         g => g.Sum(x => x.Quantity)
                     );
             }
-            catch
-            {
-                // NO lanzamos la excepción: devolvemos productos con Stock = 0.
-                // Si querés loguear algo acá podés usar un logger.
-            }
+            catch { }
 
-            // 3) Mapear a DTO
             var result = products.Select(p => new ProductResponseDto
             {
                 Id = p.Id,
@@ -77,6 +68,7 @@ namespace ForrajeriaJovitaAPI.Controllers
                 WholesalePrice = p.WholesalePrice,
                 BaseUnit = (int)p.BaseUnit,
                 IsActived = p.IsActived,
+                IsFeatured = p.IsFeatured, // ✅
                 UpdateDate = p.UpdateDate ?? p.CreationDate,
                 CategoryId = p.CategoryId ?? 0,
                 CategoryName = p.Category != null ? p.Category.Name : null,
@@ -110,7 +102,6 @@ namespace ForrajeriaJovitaAPI.Controllers
             }
             catch
             {
-                // Si hay error de stock, devolvemos 0 pero no rompemos el endpoint
                 stockTotal = 0;
             }
 
@@ -124,6 +115,7 @@ namespace ForrajeriaJovitaAPI.Controllers
                 WholesalePrice = p.WholesalePrice,
                 BaseUnit = (int)p.BaseUnit,
                 IsActived = p.IsActived,
+                IsFeatured = p.IsFeatured, // ✅
                 UpdateDate = p.UpdateDate ?? p.CreationDate,
                 CategoryId = p.CategoryId ?? 0,
                 CategoryName = p.Category != null ? p.Category.Name : null,
@@ -151,6 +143,7 @@ namespace ForrajeriaJovitaAPI.Controllers
                 Image = dto.Image,
                 CategoryId = dto.CategoryId,
                 IsActived = dto.IsActived,
+                IsFeatured = dto.IsFeatured, // ✅
                 IsDeleted = false,
                 CreationDate = DateTime.Now
             };
@@ -168,11 +161,12 @@ namespace ForrajeriaJovitaAPI.Controllers
                 WholesalePrice = product.WholesalePrice,
                 BaseUnit = (int)product.BaseUnit,
                 IsActived = product.IsActived,
+                IsFeatured = product.IsFeatured, // ✅
                 UpdateDate = product.UpdateDate ?? product.CreationDate,
                 CategoryId = product.CategoryId ?? 0,
                 CategoryName = null,
                 Image = product.Image,
-                Stock = 0 // recién creado, sin stock aún
+                Stock = 0
             };
 
             return CreatedAtAction(nameof(GetProduct), new { id = product.Id }, response);
@@ -200,6 +194,7 @@ namespace ForrajeriaJovitaAPI.Controllers
             product.Image = dto.Image;
             product.CategoryId = dto.CategoryId;
             product.IsActived = dto.IsActived;
+            product.IsFeatured = dto.IsFeatured; // ✅
             product.UpdateDate = DateTime.Now;
 
             await _context.SaveChangesAsync();
@@ -228,7 +223,6 @@ namespace ForrajeriaJovitaAPI.Controllers
         // ENDPOINTS DE STOCK (por producto)
         // =========================================================
 
-        // GET api/Products/5/stock -> lista stock por sucursal
         [HttpGet("{id}/stock")]
         public async Task<IActionResult> GetStockByProduct(int id)
         {
@@ -236,7 +230,6 @@ namespace ForrajeriaJovitaAPI.Controllers
             return Ok(stocks);
         }
 
-        // POST api/Products/5/stock/set  (setea cantidad exacta)
         [HttpPost("{id}/stock/set")]
         public async Task<IActionResult> SetStock(int id, [FromBody] UpdateStockDto dto)
         {
@@ -244,12 +237,10 @@ namespace ForrajeriaJovitaAPI.Controllers
                 return BadRequest("BranchId inválido");
 
             dto.ProductId = id;
-
             await _stockService.UpdateStockAsync(dto);
             return Ok(new { message = "Stock actualizado correctamente" });
         }
 
-        // POST api/Products/5/stock/add  (suma stock)
         [HttpPost("{id}/stock/add")]
         public async Task<IActionResult> AddStock(int id, [FromBody] UpdateStockDto dto)
         {
@@ -257,10 +248,8 @@ namespace ForrajeriaJovitaAPI.Controllers
                 return BadRequest("BranchId inválido");
 
             dto.ProductId = id;
-
             await _stockService.AddStockAsync(dto);
             return Ok(new { message = "Stock agregado correctamente" });
         }
     }
 }
-

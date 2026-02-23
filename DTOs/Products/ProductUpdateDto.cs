@@ -4,5 +4,6 @@ namespace ForrajeriaJovitaAPI.DTOs.Products
     {
         public int Id { get; set; }
         public DateTime UpdateDate { get; set; } = DateTime.Now;
+        public bool IsFeatured { get; set; }
     }
 }
