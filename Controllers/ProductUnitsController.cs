@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ForrajeriaJovitaAPI.Data;
@@ -21,7 +21,6 @@ namespace ForrajeriaJovitaAPI.Controllers
 
         // =========================================================
         // GET: api/Products/{id}/units
-        // Unidades de venta de un producto con precios vigentes
         // =========================================================
         [HttpGet("{id}/units")]
         public async Task<ActionResult<ProductUnitsResponseDto>> GetProductUnits(int id)
@@ -30,8 +29,7 @@ namespace ForrajeriaJovitaAPI.Controllers
                 .AsNoTracking()
                 .FirstOrDefaultAsync(p => p.Id == id && !p.IsDeleted);
 
-            if (product == null)
-                return NotFound();
+            if (product == null) return NotFound();
 
             var now = DateTime.Now;
 
@@ -46,19 +44,16 @@ namespace ForrajeriaJovitaAPI.Controllers
                 .OrderBy(u => u.ConversionToBase)
                 .ToListAsync();
 
-            var result = new ProductUnitsResponseDto
+            return Ok(new ProductUnitsResponseDto
             {
                 ProductId = product.Id,
                 ProductName = product.Name,
-                Units = units.Select(u => MapUnit(u)).ToList()
-            };
-
-            return Ok(result);
+                Units = units.Select(MapUnit).ToList()
+            });
         }
 
         // =========================================================
         // GET: api/Products/all-with-units
-        // Cat�logo web: productos activos con precio Retail de unidad base
         // =========================================================
         [HttpGet("all-with-units")]
         public async Task<ActionResult<IEnumerable<ProductWithBaseUnitDto>>> GetAllWithUnits()
@@ -80,7 +75,6 @@ namespace ForrajeriaJovitaAPI.Controllers
 
             var result = products.Select(p =>
             {
-                // Unidad base: la de mayor ConversionToBase (ej: bolsa 20kg = 20, vs 1kg = 1)
                 var baseUnit = p.ProductUnits
                     .OrderByDescending(u => u.ConversionToBase)
                     .FirstOrDefault();
@@ -110,7 +104,125 @@ namespace ForrajeriaJovitaAPI.Controllers
         }
 
         // =========================================================
-        // Helpers privados
+        // POST: api/Products/{id}/units  → crear unidad
+        // =========================================================
+        [HttpPost("{id}/units")]
+        [Authorize]
+        public async Task<ActionResult<ProductUnitDto>> CreateUnit(int id, [FromBody] CreateProductUnitDto dto)
+        {
+            var product = await _context.Products
+                .FirstOrDefaultAsync(p => p.Id == id && !p.IsDeleted);
+
+            if (product == null) return NotFound();
+
+            var unit = new ProductUnit
+            {
+                ProductId = id,
+                DisplayName = dto.DisplayName,
+                UnitLabel = dto.UnitLabel,
+                ConversionToBase = dto.ConversionToBase,
+                AllowFractionalQuantity = dto.AllowFractionalQuantity,
+                MinSellStep = dto.MinSellStep,
+                Barcode = dto.Barcode,
+                StockDecimals = dto.StockDecimals,
+                CreationDate = DateTime.Now
+            };
+
+            _context.ProductUnits.Add(unit);
+            await _context.SaveChangesAsync();
+
+            if (dto.RetailPrice.HasValue)
+            {
+                _context.ProductUnitPrices.Add(new ProductUnitPrice
+                {
+                    ProductUnitId = unit.Id,
+                    Tier = PriceTier.Retail,
+                    Price = dto.RetailPrice.Value,
+                    StartAt = DateTime.Now,
+                    EndAt = DateTime.Now.AddYears(10),
+                    CreationDate = DateTime.Now
+                });
+                await _context.SaveChangesAsync();
+            }
+
+            await _context.Entry(unit).Collection(u => u.ProductUnitPrices).LoadAsync();
+
+            return CreatedAtAction(nameof(GetProductUnits), new { id }, MapUnit(unit));
+        }
+
+        // =========================================================
+        // PUT: api/Products/{id}/units/{unitId}  → editar unidad
+        // =========================================================
+        [HttpPut("{id}/units/{unitId}")]
+        [Authorize]
+        public async Task<ActionResult<ProductUnitDto>> UpdateUnit(int id, int unitId, [FromBody] CreateProductUnitDto dto)
+        {
+            var unit = await _context.ProductUnits
+                .Include(u => u.ProductUnitPrices)
+                .FirstOrDefaultAsync(u => u.Id == unitId && u.ProductId == id);
+
+            if (unit == null) return NotFound();
+
+            unit.DisplayName = dto.DisplayName;
+            unit.UnitLabel = dto.UnitLabel;
+            unit.ConversionToBase = dto.ConversionToBase;
+            unit.AllowFractionalQuantity = dto.AllowFractionalQuantity;
+            unit.MinSellStep = dto.MinSellStep;
+            unit.Barcode = dto.Barcode;
+            unit.StockDecimals = dto.StockDecimals;
+
+            if (dto.RetailPrice.HasValue)
+            {
+                var now = DateTime.Now;
+
+                // Cerrar precios Retail vigentes
+                var vigentes = unit.ProductUnitPrices
+                    .Where(p => p.Tier == PriceTier.Retail &&
+                                (!p.EndAt.HasValue || p.EndAt >= now))
+                    .ToList();
+
+                foreach (var v in vigentes)
+                    v.EndAt = now;
+
+                _context.ProductUnitPrices.Add(new ProductUnitPrice
+                {
+                    ProductUnitId = unit.Id,
+                    Tier = PriceTier.Retail,
+                    Price = dto.RetailPrice.Value,
+                    StartAt = now,
+                    EndAt = now.AddYears(10),
+                    CreationDate = now
+                });
+            }
+
+            await _context.SaveChangesAsync();
+            await _context.Entry(unit).Collection(u => u.ProductUnitPrices).LoadAsync();
+
+            return Ok(MapUnit(unit));
+        }
+
+        // =========================================================
+        // DELETE: api/Products/{id}/units/{unitId}
+        // =========================================================
+        [HttpDelete("{id}/units/{unitId}")]
+        [Authorize]
+        public async Task<IActionResult> DeleteUnit(int id, int unitId)
+        {
+            var unit = await _context.ProductUnits
+                .Include(u => u.ProductUnitPrices)
+                .FirstOrDefaultAsync(u => u.Id == unitId && u.ProductId == id);
+
+            if (unit == null) return NotFound();
+
+            _context.ProductUnitPrices.RemoveRange(unit.ProductUnitPrices);
+            _context.ProductUnits.Remove(unit);
+            await _context.SaveChangesAsync();
+
+            return NoContent();
+        }
+
+        // =========================================================
+        // Helpers
         // =========================================================
         private static ProductUnitDto MapUnit(ProductUnit u) => new()
         {
@@ -122,6 +234,7 @@ namespace ForrajeriaJovitaAPI.Controllers
             MinSellStep = u.MinSellStep,
             Barcode = u.Barcode,
             StockDecimals = u.StockDecimals,
+            PercentageIncrease = u.PercentageIncrease,
             RetailPrice = u.ProductUnitPrices
                 .Where(p => p.Tier == PriceTier.Retail)
                 .OrderByDescending(p => p.StartAt)

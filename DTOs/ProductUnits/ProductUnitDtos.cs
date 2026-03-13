@@ -3,8 +3,6 @@ namespace ForrajeriaJovitaAPI.DTOs.ProductUnits
     public class ProductUnitPriceDto
     {
         public int Id { get; set; }
-
-        /// <summary>"Retail", "Wholesale" o "Special"</summary>
         public string Tier { get; set; } = string.Empty;
         public int TierValue { get; set; }
         public decimal Price { get; set; }
@@ -20,11 +18,8 @@ namespace ForrajeriaJovitaAPI.DTOs.ProductUnits
         public decimal MinSellStep { get; set; }
         public string? Barcode { get; set; }
         public int StockDecimals { get; set; }
-
-        /// <summary>Precio Retail vigente. Null si no hay precio configurado.</summary>
+        public decimal PercentageIncrease { get; set; }
         public decimal? RetailPrice { get; set; }
-
-        /// <summary>Todos los precios vigentes de esta unidad.</summary>
         public List<ProductUnitPriceDto> Prices { get; set; } = new();
     }
 
@@ -48,5 +43,20 @@ namespace ForrajeriaJovitaAPI.DTOs.ProductUnits
         public string BaseUnitDisplayName { get; set; } = string.Empty;
         public decimal? BaseRetailPrice { get; set; }
         public int UnitCount { get; set; }
+    }
+
+    /// <summary>DTO para crear o editar una unidad de venta.</summary>
+    public class CreateProductUnitDto
+    {
+        public string DisplayName { get; set; } = string.Empty;
+        public string UnitLabel { get; set; } = string.Empty;
+        public decimal ConversionToBase { get; set; } = 1;
+        public bool AllowFractionalQuantity { get; set; }
+        public decimal MinSellStep { get; set; } = 1;
+        public string? Barcode { get; set; }
+        public int StockDecimals { get; set; } = 0;
+
+        /// <summary>Precio Retail. Si se envía, se crea/actualiza el precio vigente.</summary>
+        public decimal? RetailPrice { get; set; }
     }
 }
