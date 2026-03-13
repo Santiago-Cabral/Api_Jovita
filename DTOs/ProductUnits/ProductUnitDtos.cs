@@ -18,7 +18,6 @@ namespace ForrajeriaJovitaAPI.DTOs.ProductUnits
         public decimal MinSellStep { get; set; }
         public string? Barcode { get; set; }
         public int StockDecimals { get; set; }
-        public decimal PercentageIncrease { get; set; }
         public decimal? RetailPrice { get; set; }
         public List<ProductUnitPriceDto> Prices { get; set; } = new();
     }

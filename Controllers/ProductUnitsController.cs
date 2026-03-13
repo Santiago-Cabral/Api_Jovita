@@ -9,7 +9,6 @@ namespace ForrajeriaJovitaAPI.Controllers
 {
     [ApiController]
     [Route("api/Products")]
-    [AllowAnonymous]
     public class ProductUnitsController : ControllerBase
     {
         private readonly ForrajeriaContext _context;
@@ -234,7 +233,6 @@ namespace ForrajeriaJovitaAPI.Controllers
             MinSellStep = u.MinSellStep,
             Barcode = u.Barcode,
             StockDecimals = u.StockDecimals,
-            PercentageIncrease = u.PercentageIncrease,
             RetailPrice = u.ProductUnitPrices
                 .Where(p => p.Tier == PriceTier.Retail)
                 .OrderByDescending(p => p.StartAt)
