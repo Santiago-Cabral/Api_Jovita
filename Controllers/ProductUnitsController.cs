@@ -33,7 +33,7 @@ namespace ForrajeriaJovitaAPI.Controllers
             var now = DateTime.Now;
 
             var units = await _context.ProductUnits
-                .Where(u => u.ProductId == id)
+                .Where(u => u.ProductId == id && !u.IsDeleted)
                 .Include(u => u.ProductUnitPrices
                     .Where(p =>
                         (!p.StartAt.HasValue || p.StartAt <= now) &&
@@ -75,6 +75,7 @@ namespace ForrajeriaJovitaAPI.Controllers
             var result = products.Select(p =>
             {
                 var baseUnit = p.ProductUnits
+                    .Where(u => !u.IsDeleted)
                     .OrderByDescending(u => u.ConversionToBase)
                     .FirstOrDefault();
 
@@ -95,7 +96,7 @@ namespace ForrajeriaJovitaAPI.Controllers
                     BaseUnitLabel = baseUnit?.UnitLabel ?? "",
                     BaseUnitDisplayName = baseUnit?.DisplayName ?? "",
                     BaseRetailPrice = retailPrice,
-                    UnitCount = p.ProductUnits.Count
+                    UnitCount = p.ProductUnits.Count(u => !u.IsDeleted)
                 };
             }).ToList();
 
@@ -158,7 +159,7 @@ namespace ForrajeriaJovitaAPI.Controllers
         {
             var unit = await _context.ProductUnits
                 .Include(u => u.ProductUnitPrices)
-                .FirstOrDefaultAsync(u => u.Id == unitId && u.ProductId == id);
+                .FirstOrDefaultAsync(u => u.Id == unitId && u.ProductId == id && !u.IsDeleted);
 
             if (unit == null) return NotFound();
 
@@ -174,7 +175,6 @@ namespace ForrajeriaJovitaAPI.Controllers
             {
                 var now = DateTime.Now;
 
-                // Cerrar precios Retail vigentes
                 var vigentes = unit.ProductUnitPrices
                     .Where(p => p.Tier == PriceTier.Retail &&
                                 (!p.EndAt.HasValue || p.EndAt >= now))
