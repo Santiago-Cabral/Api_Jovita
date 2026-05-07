@@ -1,4 +1,4 @@
-// Models/ProductUnit.cs
+﻿// Models/ProductUnit.cs
 namespace ForrajeriaJovitaAPI.Models
 {
     public enum StockRoundingType
@@ -8,7 +8,6 @@ namespace ForrajeriaJovitaAPI.Models
         RoundDown = 2,
         RoundNearest = 3
     }
-
     public class ProductUnit
     {
         public int Id { get; set; }
@@ -22,8 +21,8 @@ namespace ForrajeriaJovitaAPI.Models
         public StockRoundingType StockRounding { get; set; }
         public int StockDecimals { get; set; }
         public DateTime CreationDate { get; set; } = DateTime.Now;
-
-        // Navegaci�n
+        public bool IsDeleted { get; set; } = false;  // ← línea agregada
+        // Navegación
         public Product Product { get; set; } = null!;
         public ICollection<ProductUnitPrice> ProductUnitPrices { get; set; } = new List<ProductUnitPrice>();
     }
