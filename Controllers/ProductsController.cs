@@ -27,16 +27,40 @@ namespace ForrajeriaJovitaAPI.Controllers
         }
 
         // =========================================================
-        // GET: api/Products  -> lista con Stock total
+        // GET: api/Products  -> lista con Stock total (paginable)
+        // Sin page/pageSize: devuelve todo (igual que antes, admin OK)
+        // Con page/pageSize: devuelve esa página + header X-Total-Count
         // =========================================================
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<ProductResponseDto>>> GetProducts()
+        public async Task<ActionResult<IEnumerable<ProductResponseDto>>> GetProducts(
+            [FromQuery] int? page = null,
+            [FromQuery] int? pageSize = null)
         {
-            var products = await _context.Products
+            var query = _context.Products
                 .Where(p => !p.IsDeleted)
                 .Include(p => p.Category)
                 .AsNoTracking()
-                .ToListAsync();
+                .OrderBy(p => p.Id);
+
+            List<Product> products;
+
+            if (page.HasValue && pageSize.HasValue)
+            {
+                var totalCount = await query.CountAsync();
+                var safePage = page.Value < 1 ? 1 : page.Value;
+                var safePageSize = pageSize.Value < 1 || pageSize.Value > 200 ? 50 : pageSize.Value;
+
+                products = await query
+                    .Skip((safePage - 1) * safePageSize)
+                    .Take(safePageSize)
+                    .ToListAsync();
+
+                Response.Headers["X-Total-Count"] = totalCount.ToString();
+            }
+            else
+            {
+                products = await query.ToListAsync();
+            }
 
             var productIds = products.Select(p => p.Id).ToList();
 
@@ -68,7 +92,7 @@ namespace ForrajeriaJovitaAPI.Controllers
                 WholesalePrice = p.WholesalePrice,
                 BaseUnit = (int)p.BaseUnit,
                 IsActived = p.IsActived,
-                IsFeatured = p.IsFeatured, // ✅
+                IsFeatured = p.IsFeatured,
                 UpdateDate = p.UpdateDate ?? p.CreationDate,
                 CategoryId = p.CategoryId ?? 0,
                 CategoryName = p.Category != null ? p.Category.Name : null,
@@ -115,7 +139,7 @@ namespace ForrajeriaJovitaAPI.Controllers
                 WholesalePrice = p.WholesalePrice,
                 BaseUnit = (int)p.BaseUnit,
                 IsActived = p.IsActived,
-                IsFeatured = p.IsFeatured, // ✅
+                IsFeatured = p.IsFeatured,
                 UpdateDate = p.UpdateDate ?? p.CreationDate,
                 CategoryId = p.CategoryId ?? 0,
                 CategoryName = p.Category != null ? p.Category.Name : null,
@@ -143,7 +167,7 @@ namespace ForrajeriaJovitaAPI.Controllers
                 Image = dto.Image,
                 CategoryId = dto.CategoryId,
                 IsActived = dto.IsActived,
-                IsFeatured = dto.IsFeatured, // ✅
+                IsFeatured = dto.IsFeatured,
                 IsDeleted = false,
                 CreationDate = DateTime.Now
             };
@@ -161,7 +185,7 @@ namespace ForrajeriaJovitaAPI.Controllers
                 WholesalePrice = product.WholesalePrice,
                 BaseUnit = (int)product.BaseUnit,
                 IsActived = product.IsActived,
-                IsFeatured = product.IsFeatured, // ✅
+                IsFeatured = product.IsFeatured,
                 UpdateDate = product.UpdateDate ?? product.CreationDate,
                 CategoryId = product.CategoryId ?? 0,
                 CategoryName = null,
@@ -194,7 +218,7 @@ namespace ForrajeriaJovitaAPI.Controllers
             product.Image = dto.Image;
             product.CategoryId = dto.CategoryId;
             product.IsActived = dto.IsActived;
-            product.IsFeatured = dto.IsFeatured; // ✅
+            product.IsFeatured = dto.IsFeatured;
             product.UpdateDate = DateTime.Now;
 
             await _context.SaveChangesAsync();
