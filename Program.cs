@@ -130,7 +130,8 @@ builder.Services.AddCors(options =>
             )
             .AllowAnyHeader()
             .AllowAnyMethod()
-            .AllowCredentials();
+            .AllowCredentials()
+            .WithExposedHeaders("X-Total-Count");
     });
 
     // Policy temporal para DEV: permite cualquier origen (no usar en prod si necesitás credenciales)
@@ -138,7 +139,8 @@ builder.Services.AddCors(options =>
     {
         policy.AllowAnyOrigin()
               .AllowAnyHeader()
-              .AllowAnyMethod();
+              .AllowAnyMethod()
+              .WithExposedHeaders("X-Total-Count");
     });
 });
 
@@ -219,4 +221,3 @@ try
 catch { }
 
 app.Run();
-
