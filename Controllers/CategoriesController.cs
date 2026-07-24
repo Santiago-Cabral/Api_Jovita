@@ -1,6 +1,8 @@
+using ForrajeriaJovitaAPI.Data;
 using ForrajeriaJovitaAPI.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace ForrajeriaJovitaAPI.Controllers
 {
@@ -9,15 +11,32 @@ namespace ForrajeriaJovitaAPI.Controllers
     public class CategoriesController : ControllerBase
     {
         private readonly ICategoryService _service;
+        private readonly ForrajeriaContext _context;
 
-        public CategoriesController(ICategoryService service)
+        public CategoriesController(ICategoryService service, ForrajeriaContext context)
         {
             _service = service;
+            _context = context;
         }
 
         [HttpGet]
         public async Task<IActionResult> GetAll() =>
             Ok(await _service.GetAllAsync());
+
+        // GET: api/Categories/with-counts -> nombre + cantidad de productos (para el storefront)
+        [HttpGet("with-counts")]
+        [AllowAnonymous]
+        public async Task<IActionResult> GetAllWithCounts()
+        {
+            var result = await _context.Products
+                .Where(p => !p.IsDeleted && p.IsActived && p.CategoryId != null)
+                .Include(p => p.Category)
+                .GroupBy(p => p.Category.Name)
+                .Select(g => new { title = g.Key, count = g.Count() })
+                .ToListAsync();
+
+            return Ok(result);
+        }
 
         [Authorize(Roles = "administrador/a")]
         [HttpPost]
