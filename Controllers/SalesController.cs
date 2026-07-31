@@ -25,35 +25,6 @@ namespace ForrajeriaJovitaAPI.Controllers
         // ======================================================================
         [HttpGet]
         public async Task<ActionResult<IEnumerable<SaleDto>>> GetSales(
-            [FromQuery] DateTime? startDate = null,
-            [FromQuery] DateTime? endDate = null,
-            [FromQuery] int? sellerId = null)
-        {
-            try
-            {
-                _logger.LogInformation(
-                    "Consultando ventas. start={Start}, end={End}, seller={SellerId}",
-                    startDate, endDate, sellerId);
-
-                var sales = await _ventaService.GetAllSalesAsync(startDate, endDate, sellerId);
-                return Ok(sales);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error al obtener ventas");
-                return StatusCode(500, new
-                {
-                    message = "Error al obtener ventas",
-                    error = ex.Message
-                });
-            }
-        }
-
-        // ======================================================================
-        // GET /api/sales/{id}
-        // ======================================================================
-        [HttpGet]
-        public async Task<ActionResult<IEnumerable<SaleDto>>> GetSales(
     [FromQuery] DateTime? startDate = null,
     [FromQuery] DateTime? endDate = null,
     [FromQuery] int? sellerId = null)
@@ -72,6 +43,35 @@ namespace ForrajeriaJovitaAPI.Controllers
                     error = ex.Message,
                     innerError = ex.InnerException?.Message,
                     stackTrace = ex.ToString()   // TEMPORAL: sacar después de debuggear
+                });
+            }
+        }
+
+        // ======================================================================
+        // GET /api/sales/{id}
+        // ======================================================================
+        [HttpGet("{id:int}")]
+        public async Task<ActionResult<SaleDto>> GetSale(int id)
+        {
+            try
+            {
+                var sale = await _ventaService.GetSaleByIdAsync(id);
+
+                if (sale == null)
+                {
+                    _logger.LogWarning("Venta {Id} no encontrada", id);
+                    return NotFound(new { message = "Venta no encontrada" });
+                }
+
+                return Ok(sale);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al obtener venta {Id}", id);
+                return StatusCode(500, new
+                {
+                    message = "Error al obtener venta",
+                    error = ex.Message
                 });
             }
         }
