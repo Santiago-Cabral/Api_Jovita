@@ -6,6 +6,8 @@ namespace ForrajeriaJovitaAPI.Models
 {
     public class Sale
     {
+        // Agregar esta línea a la clase Sale, junto a las demás propiedades:
+        public string SaleChannel { get; set; } = "local"; // "local" | "web"
         public int Id { get; set; }
         public int CashMovementId { get; set; }
         public CashMovement? CashMovement { get; set; }

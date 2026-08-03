@@ -5,6 +5,7 @@ namespace ForrajeriaJovitaAPI.DTOs
 {
     public class SaleDto
     {
+        public string SaleChannel { get; set; } = "local";
         public int Id { get; set; }
         public DateTime SoldAt { get; set; }
         public string SellerName { get; set; } = string.Empty;

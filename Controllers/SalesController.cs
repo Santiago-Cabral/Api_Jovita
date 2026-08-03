@@ -25,13 +25,22 @@ namespace ForrajeriaJovitaAPI.Controllers
         // ======================================================================
         [HttpGet]
         public async Task<ActionResult<IEnumerable<SaleDto>>> GetSales(
-    [FromQuery] DateTime? startDate = null,
-    [FromQuery] DateTime? endDate = null,
-    [FromQuery] int? sellerId = null)
+            [FromQuery] DateTime? startDate = null,
+            [FromQuery] DateTime? endDate = null,
+            [FromQuery] int? sellerId = null,
+            [FromQuery] string? channel = null) // "web" | "local"
         {
             try
             {
+                _logger.LogInformation(
+                    "Consultando ventas. start={Start}, end={End}, seller={SellerId}, channel={Channel}",
+                    startDate, endDate, sellerId, channel);
+
                 var sales = await _ventaService.GetAllSalesAsync(startDate, endDate, sellerId);
+
+                if (!string.IsNullOrWhiteSpace(channel))
+                    sales = sales.Where(s => s.SaleChannel == channel);
+
                 return Ok(sales);
             }
             catch (Exception ex)
@@ -40,9 +49,7 @@ namespace ForrajeriaJovitaAPI.Controllers
                 return StatusCode(500, new
                 {
                     message = "Error al obtener ventas",
-                    error = ex.Message,
-                    innerError = ex.InnerException?.Message,
-                    stackTrace = ex.ToString()   // TEMPORAL: sacar después de debuggear
+                    error = ex.Message
                 });
             }
         }

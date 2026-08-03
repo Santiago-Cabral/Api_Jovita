@@ -167,6 +167,7 @@ namespace ForrajeriaJovitaAPI.Services
                     CashMovementId = cashMovement.Id,
                     SellerUserId = user.Id,
                     SoldAt = DateTime.UtcNow,
+                    SaleChannel = "web",
 
                     Subtotal = subtotal,
                     DiscountTotal = 0,
@@ -270,6 +271,7 @@ namespace ForrajeriaJovitaAPI.Services
 
                 var sale = new Sale
                 {
+                    SaleChannel = "web",
                     CashMovementId = cashMovement.Id,
                     ClientId = dto.ClientId,
                     SellerUserId = user.Id,
@@ -455,6 +457,7 @@ namespace ForrajeriaJovitaAPI.Services
                 ClientId = s.ClientId,
                 ClientName = s.Client != null ? s.Client.FullName : null,
                 DeliveryType = s.DeliveryType,
+                SaleChannel = s.SaleChannel,
                 DeliveryAddress = deliveryAddress,
                 DeliveryCost = deliveryCost,
                 DeliveryNote = s.DeliveryNote,
