@@ -15,6 +15,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 
+
 var builder = WebApplication.CreateBuilder(args);
 
 // -----------------------
@@ -87,7 +88,7 @@ builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
 builder.Services.AddScoped<IVentaService, VentaService>();
 builder.Services.AddScoped<ICheckoutService, CheckoutService>();
 builder.Services.AddScoped<IStockService, StockService>();
-
+builder.Services.AddScoped<ICouponService, CouponService>();
 // <-- LÍNEA AGREGADA: registro del servicio de Branches
 builder.Services.AddScoped<IBranchService, BranchService>();
 

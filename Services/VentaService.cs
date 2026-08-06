@@ -12,11 +12,13 @@ namespace ForrajeriaJovitaAPI.Services
     public class VentaService : IVentaService
     {
         private readonly ForrajeriaContext _context;
+        private readonly ICouponService _couponService; // 🎟️ NUEVO
         private const int CASA_CENTRAL_BRANCH_ID = 1;
 
-        public VentaService(ForrajeriaContext context)
+        public VentaService(ForrajeriaContext context, ICouponService couponService)
         {
             _context = context;
+            _couponService = couponService; // 🎟️ NUEVO
         }
 
         public async Task<IEnumerable<SaleDto>> GetAllSalesAsync(DateTime? startDate = null, DateTime? endDate = null, int? sellerId = null)
@@ -70,6 +72,10 @@ namespace ForrajeriaJovitaAPI.Services
         public async Task<SaleDto> CreatePublicSaleAsync(CreatePublicSaleDto dto)
         {
             using var tx = await _context.Database.BeginTransactionAsync();
+
+            // 🎟️ Se completa DENTRO del try y se usa DESPUÉS del commit
+            string? appliedCouponCode = null;
+
             try
             {
                 if (string.IsNullOrWhiteSpace(dto.Customer))
@@ -102,7 +108,22 @@ namespace ForrajeriaJovitaAPI.Services
 
                 decimal subtotal = dto.Items.Sum(i => i.Quantity * i.UnitPrice);
                 decimal shipping = dto.ShippingCost;
-                decimal total = subtotal + shipping;
+
+                // 🎟️ NUEVO: validar y calcular el descuento SIEMPRE en el servidor
+                decimal discount = 0;
+
+                if (!string.IsNullOrWhiteSpace(dto.CouponCode))
+                {
+                    var couponResult = await _couponService.ValidateAsync(dto.CouponCode, subtotal);
+
+                    if (!couponResult.Valid)
+                        throw new InvalidOperationException(couponResult.Message);
+
+                    discount = couponResult.DiscountAmount;
+                    appliedCouponCode = couponResult.CouponCode;
+                }
+
+                decimal total = subtotal + shipping - discount;
 
                 var cashMovement = new CashMovement
                 {
@@ -170,7 +191,7 @@ namespace ForrajeriaJovitaAPI.Services
                     SaleChannel = "web",
 
                     Subtotal = subtotal,
-                    DiscountTotal = 0,
+                    DiscountTotal = discount, // 🎟️ antes era 0 fijo
                     Total = total,
 
                     CustomerName =
@@ -225,6 +246,18 @@ namespace ForrajeriaJovitaAPI.Services
 
                 await _context.SaveChangesAsync();
                 await tx.CommitAsync();
+
+                // 🎟️ Recién ahora que la venta se confirmó, se consume el uso del cupón.
+                // Si esto fallara, no revertimos la venta (ya está confirmada);
+                // solo quedaría sin descontar el contador de usos, que es el caso menos grave.
+                if (!string.IsNullOrWhiteSpace(appliedCouponCode))
+                {
+                    try
+                    {
+                        await _couponService.RegisterUsageAsync(appliedCouponCode);
+                    }
+                    catch { /* no crítico: la venta ya está confirmada */ }
+                }
 
                 return (await GetSaleByIdAsync(sale.Id))!;
             }
@@ -432,9 +465,6 @@ namespace ForrajeriaJovitaAPI.Services
                 if (f == "pickup" || f == "delivery")
                     fulfillment = f;
             }
-
-            // Si la DB no tiene fulfillment pero DeliveryType/DeliveryAddress sugieren pickup, podrías extender aquí.
-            // Por ahora, fallback seguro a "delivery" cuando no esté bien definido.
 
             // Ajustar delivery fields según fulfillment para la respuesta
             string? deliveryAddress = s.DeliveryAddress;

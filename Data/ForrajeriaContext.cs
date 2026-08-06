@@ -32,6 +32,7 @@ namespace ForrajeriaJovitaAPI.Data
         public DbSet<User> Users { get; set; } = null!;
         public DbSet<Category> Categories { get; set; } = null!;
         public DbSet<Setting> Settings { get; set; } = null!;
+        public DbSet<Coupon> Coupons { get; set; } = null!;
         // PaymentTransaction
         public DbSet<PaymentTransaction> PaymentTransactions { get; set; } = null!;
 
