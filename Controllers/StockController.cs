@@ -5,6 +5,7 @@ using ForrajeriaJovitaAPI.DTOs;
 using ForrajeriaJovitaAPI.Data;
 using ForrajeriaJovitaAPI.Models;
 using ForrajeriaJovitaAPI.Services;
+using Microsoft.AspNetCore.Authorization;
 
 namespace ForrajeriaJovitaAPI.Controllers
 {
