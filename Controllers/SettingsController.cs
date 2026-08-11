@@ -11,6 +11,7 @@ namespace ForrajeriaJovitaAPI.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
+    [Authorize(Roles = "administrador/a")]
     public class SettingsController : ControllerBase
     {
         private readonly ForrajeriaContext _context;

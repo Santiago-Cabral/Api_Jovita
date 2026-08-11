@@ -8,6 +8,7 @@ namespace ForrajeriaJovitaAPI.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize(Roles = "administrador/a")]
     public class ClientsController : ControllerBase
     {
         private readonly IClientAccountService _service;

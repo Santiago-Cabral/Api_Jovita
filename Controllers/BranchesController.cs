@@ -6,6 +6,7 @@ namespace ForrajeriaJovitaAPI.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
+    [Authorize(Roles = "administrador/a")]
     public class BranchesController : ControllerBase
     {
         private readonly IBranchService _branchService;

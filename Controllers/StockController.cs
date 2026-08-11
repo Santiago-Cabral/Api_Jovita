@@ -10,6 +10,7 @@ namespace ForrajeriaJovitaAPI.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
+    [Authorize(Roles = "administrador/a")]
     public class StockController : ControllerBase
     {
         private readonly IStockService _stockService;
