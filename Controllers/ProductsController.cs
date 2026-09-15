@@ -19,11 +19,13 @@ namespace ForrajeriaJovitaAPI.Controllers
     {
         private readonly ForrajeriaContext _context;
         private readonly IStockService _stockService;
+        private readonly ILogger<ProductsController> _logger;
 
-        public ProductsController(ForrajeriaContext context, IStockService stockService)
+        public ProductsController(ForrajeriaContext context, IStockService stockService, ILogger<ProductsController> logger)
         {
             _context = context;
             _stockService = stockService;
+            _logger = logger;
         }
 
         // =========================================================
@@ -92,7 +94,10 @@ namespace ForrajeriaJovitaAPI.Controllers
                         g => g.Sum(x => x.Quantity)
                     );
             }
-            catch { }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error calculando stockDict en GetProducts");
+            }
 
             var result = products.Select(p => new ProductResponseDto
             {
@@ -136,8 +141,9 @@ namespace ForrajeriaJovitaAPI.Controllers
                     .Where(s => s.ProductId == id)
                     .SumAsync(s => s.Quantity);
             }
-            catch
+            catch (Exception ex)
             {
+                _logger.LogError(ex, "❌ Error calculando stockTotal en GetProduct({Id})", id);
                 stockTotal = 0;
             }
 
