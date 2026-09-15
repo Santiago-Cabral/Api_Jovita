@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using ForrajeriaJovitaAPI.DTOs.Checkout;
-using ForrajeriaJovitaAPI.DTOs.Payway;
+using ForrajeriaJovitaAPI.DTOs.MercadoPago;
 
 namespace ForrajeriaJovitaAPI.Services
 {
@@ -17,7 +17,7 @@ namespace ForrajeriaJovitaAPI.Services
         private readonly ForrajeriaContext _context;
         private readonly ILogger<CheckoutService> _logger;
         private readonly IConfiguration _config;
-        private readonly IPaywayService _paywayService;
+        private readonly IMercadoPagoService _mercadoPagoService;
 
         private const int OnlineBranchId = 1;
         private const int OnlineSellerUserId = 1;
@@ -26,12 +26,12 @@ namespace ForrajeriaJovitaAPI.Services
             ForrajeriaContext context,
             ILogger<CheckoutService> logger,
             IConfiguration config,
-            IPaywayService paywayService)
+            IMercadoPagoService mercadoPagoService)
         {
             _context = context;
             _logger = logger;
             _config = config;
-            _paywayService = paywayService;
+            _mercadoPagoService = mercadoPagoService;
         }
 
         public async Task<CheckoutResponseDto> ProcessCheckoutAsync(CheckoutRequestDto request)
@@ -209,7 +209,7 @@ namespace ForrajeriaJovitaAPI.Services
                 throw;
             }
 
-            string? paywayRedirectUrl = null;
+            string? mercadoPagoRedirectUrl = null;
             try
             {
                 var customerEmail = "cliente@temp.com";
@@ -226,10 +226,10 @@ namespace ForrajeriaJovitaAPI.Services
                     }
                 }
 
-                var frontendUrl = _config["Frontend:Url"] ?? "https://forrajeria-jovita.vercel.app";
+                // Nota: ReturnUrl/CancelUrl ya no se arman acá — MercadoPagoService
+                // las construye internamente a partir de Frontend:Url (appsettings.json).
 
-                // Llamada al servicio Payway usando el DTO existente CreateCheckoutRequest
-                var paywayRequest = new CreateCheckoutRequest
+                var checkoutRequest = new CreateCheckoutRequest
                 {
                     SaleId = sale.Id,
                     Amount = sale.Total,
@@ -239,14 +239,12 @@ namespace ForrajeriaJovitaAPI.Services
                         Name = customerName,
                         Email = customerEmail,
                         Phone = customerPhone
-                    },
-                    ReturnUrl = $"{frontendUrl}/pago-exitoso?saleId={sale.Id}",
-                    CancelUrl = $"{frontendUrl}/pago-cancelado?saleId={sale.Id}"
+                    }
                 };
 
-                var paywayResult = await _paywayService.CreateCheckoutAsync(paywayRequest);
+                var mpResult = await _mercadoPagoService.CreateCheckoutAsync(checkoutRequest);
 
-                paywayRedirectUrl = paywayResult.CheckoutUrl;
+                mercadoPagoRedirectUrl = mpResult.CheckoutUrl;
 
                 // Guardar PaymentTransaction (se consideró crítico para tracking de pagos)
                 try
@@ -254,8 +252,8 @@ namespace ForrajeriaJovitaAPI.Services
                     var paymentTransaction = new PaymentTransaction
                     {
                         SaleId = sale.Id,
-                        TransactionId = paywayResult.TransactionId,
-                        CheckoutId = paywayResult.CheckoutId,
+                        TransactionId = mpResult.TransactionId,
+                        CheckoutId = mpResult.CheckoutId,
                         Status = "pending",
                         Amount = sale.Total,
                         Currency = "ARS",
@@ -269,7 +267,7 @@ namespace ForrajeriaJovitaAPI.Services
                     await _context.SaveChangesAsync();
 
                     _logger.LogInformation("✅ PaymentTransaction guardado para Sale {SaleId}, TransactionId: {TransactionId}",
-                        sale.Id, paywayResult.TransactionId);
+                        sale.Id, mpResult.TransactionId);
                 }
                 catch (Exception ex)
                 {
@@ -278,8 +276,8 @@ namespace ForrajeriaJovitaAPI.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error creando checkout en Payway para Sale {SaleId}", sale.Id);
-                throw new InvalidOperationException("Error al crear el checkout en Payway. Intente nuevamente.", ex);
+                _logger.LogError(ex, "Error creando checkout en Mercado Pago para Sale {SaleId}", sale.Id);
+                throw new InvalidOperationException("Error al crear el checkout en Mercado Pago. Intente nuevamente.", ex);
             }
 
             return new CheckoutResponseDto
@@ -296,9 +294,8 @@ namespace ForrajeriaJovitaAPI.Services
                     Stock = (int)s.Quantity // conversión explícita para evitar error de compilación
                 }).ToList(),
                 TicketUrl = null,
-                PaywayRedirectUrl = paywayRedirectUrl
+                PaywayRedirectUrl = mercadoPagoRedirectUrl
             };
         }
     }
 }
-
