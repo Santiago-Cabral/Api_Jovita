@@ -206,14 +206,6 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-// =====================================================
-// STARTUP LOG (info útil)
-// =====================================================
-try
-{
-    var payway = app.Services.GetRequiredService<PaywayOptions>();
-    app.Logger.LogInformation("Payway ApiUrl: {Url}", payway.ApiUrl);
-}
-catch { }
+
 
 app.Run();

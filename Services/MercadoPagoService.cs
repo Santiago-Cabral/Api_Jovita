@@ -103,7 +103,7 @@ namespace ForrajeriaJovitaAPI.Services
             try
             {
                 var client = new PaymentClient();
-                Payment payment = await client.GetAsync(long.Parse(paymentId), cancellationToken);
+                Payment payment = await client.GetAsync(long.Parse(paymentId));
 
                 if (payment == null) return null;
 
