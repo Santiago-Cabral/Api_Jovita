@@ -30,7 +30,10 @@ builder.Logging.AddConsole();
 // DB
 // =====================================================
 builder.Services.AddDbContext<ForrajeriaContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"))
+    options.UseSqlServer(
+        builder.Configuration.GetConnectionString("DefaultConnection"),
+        sqlOptions => sqlOptions.TranslateParameterizedCollectionsToConstants()
+    )
 );
 
 // =====================================================
