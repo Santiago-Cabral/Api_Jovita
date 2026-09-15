@@ -27,20 +27,32 @@ namespace ForrajeriaJovitaAPI.Controllers
         }
 
         // =========================================================
-        // GET: api/Products  -> lista con Stock total (paginable)
+        // GET: api/Products  -> lista con Stock total (paginable + búsqueda)
         // Sin page/pageSize: devuelve todo (igual que antes, admin OK)
         // Con page/pageSize: devuelve esa página + header X-Total-Count
+        // Con search: filtra por nombre o código en TODO el catálogo
         // =========================================================
         [HttpGet]
         public async Task<ActionResult<IEnumerable<ProductResponseDto>>> GetProducts(
             [FromQuery] int? page = null,
-            [FromQuery] int? pageSize = null)
+            [FromQuery] int? pageSize = null,
+            [FromQuery] string? search = null)
         {
             var query = _context.Products
                 .Where(p => !p.IsDeleted)
                 .Include(p => p.Category)
                 .AsNoTracking()
-                .OrderBy(p => p.Id);
+                .AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var term = search.Trim();
+                query = query.Where(p =>
+                    EF.Functions.Like(p.Name, $"%{term}%") ||
+                    EF.Functions.Like(p.Code, $"%{term}%"));
+            }
+
+            query = query.OrderBy(p => p.Id);
 
             List<Product> products;
 

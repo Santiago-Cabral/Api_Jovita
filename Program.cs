@@ -11,6 +11,8 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
+using MercadoPago.Config;
+using ForrajeriaJovitaAPI.DTOs.MercadoPago;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -32,21 +34,14 @@ builder.Services.AddDbContext<ForrajeriaContext>(options =>
 );
 
 // =====================================================
-// PAYWAY
+// MERCADO PAGO
 // =====================================================
-builder.Services.Configure<PaywayOptions>(builder.Configuration.GetSection("Payway"));
-builder.Services.AddSingleton(sp => sp.GetRequiredService<IOptions<PaywayOptions>>().Value);
-
-builder.Services.AddHttpClient<IPaywayService, PaywayService>((sp, client) =>
+builder.Services.AddSingleton(new MercadoPagoOptions
 {
-    var cfg = sp.GetRequiredService<PaywayOptions>();
-    if (string.IsNullOrWhiteSpace(cfg.ApiUrl))
-        throw new Exception("Payway ApiUrl not configured");
-
-    client.BaseAddress = new Uri(cfg.ApiUrl.EndsWith("/") ? cfg.ApiUrl : cfg.ApiUrl + "/");
-    client.Timeout = TimeSpan.FromSeconds(45);
-    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+    AccessToken = builder.Configuration["MercadoPago:AccessToken"] ?? "",
+    WebhookSecret = builder.Configuration["MercadoPago:WebhookSecret"] ?? ""
 });
+builder.Services.AddScoped<IMercadoPagoService, MercadoPagoService>(); 
 
 // =====================================================
 // JWT
@@ -157,7 +152,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 // BUILD
 // =====================================================
 var app = builder.Build();
-
+MercadoPagoConfig.AccessToken = builder.Configuration["MercadoPago:AccessToken"];
 // -----------------------
 // Manejo global de errores (muestra stack en Development)
 // -----------------------

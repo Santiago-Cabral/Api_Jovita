@@ -10,6 +10,7 @@
 
 	<ItemGroup>
 		<!-- JWT -->
+		<PackageReference Include="mercadopago-sdk" Version="3.7.0" />
 		<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.0" />
 
 		<!-- HTTP + Polly (requiere Logging 10.x) -->
