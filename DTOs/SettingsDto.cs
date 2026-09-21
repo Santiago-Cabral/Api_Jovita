@@ -76,6 +76,9 @@ namespace ForrajeriaJovitaAPI.Dtos
         [JsonPropertyName("heroSlides")]
         public List<HeroSlideDto>? HeroSlides { get; set; }
 
+        [JsonPropertyName("categoryImages")]
+        public Dictionary<string, string>? CategoryImages { get; set; }
+
         [JsonPropertyName("defaultShippingPrice")]
         public int DefaultShippingPrice { get; set; } = 2500;
 
@@ -244,6 +247,12 @@ namespace ForrajeriaJovitaAPI.Dtos
             {
                 var slides = TryDeserialize<List<HeroSlideDto>>(v);
                 if (slides != null && slides.Count > 0) dto.HeroSlides = slides;
+            }
+
+            if (dict.TryGetValue("categoryImages", out v))
+            {
+                var images = TryDeserialize<Dictionary<string, string>>(v);
+                if (images != null && images.Count > 0) dto.CategoryImages = images;
             }
 
             if (dict.TryGetValue("bankName", out v)) dto.BankName = TryDeserialize<string>(v) ?? dto.BankName;

@@ -186,6 +186,7 @@ namespace ForrajeriaJovitaAPI.Controllers
 
             d["shippingZones"] = JsonSerializer.Serialize(dto.ShippingZones ?? new List<ShippingZoneDto>(), _jsonOpts);
             d["heroSlides"] = JsonSerializer.Serialize(dto.HeroSlides ?? new List<HeroSlideDto>(), _jsonOpts);
+            d["categoryImages"] = JsonSerializer.Serialize(dto.CategoryImages ?? new Dictionary<string, string>(), _jsonOpts);
 
             d["defaultShippingPrice"] = JsonSerializer.Serialize(dto.DefaultShippingPrice, _jsonOpts);
             d["cash"] = JsonSerializer.Serialize(dto.Cash, _jsonOpts);
