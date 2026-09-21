@@ -16,6 +16,7 @@
 		<!-- HTTP + Polly (requiere Logging 10.x) -->
 		<PackageReference Include="Microsoft.Extensions.Http.Polly" Version="10.0.2" />
 		<PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.2" />
+		<PackageReference Include="SixLabors.ImageSharp" Version="4.1.2" />
 
 		<!-- Swagger -->
 		<PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />

@@ -29,7 +29,7 @@ namespace ForrajeriaJovitaAPI.Controllers
         }
 
         /// <summary>
-        /// GET /api/Settings - Obtener configuración tipada (pública)
+        /// GET /api/Settings - Obtener configuraciï¿½n tipada (pï¿½blica)
         /// Devuelve SettingsDto con tipos correctos (bool, number, array).
         /// </summary>
         [HttpGet]
@@ -55,12 +55,12 @@ namespace ForrajeriaJovitaAPI.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error al obtener settings");
-                return StatusCode(500, new { message = "Error al obtener configuración" });
+                return StatusCode(500, new { message = "Error al obtener configuraciï¿½n" });
             }
         }
 
         /// <summary>
-        /// PUT /api/Settings - Actualizar configuración (solo admin)
+        /// PUT /api/Settings - Actualizar configuraciï¿½n (solo admin)
         /// Recibe SettingsDto y guarda cada propiedad como JSON en la tabla Settings.
         /// </summary>
         [HttpPut]
@@ -68,7 +68,7 @@ namespace ForrajeriaJovitaAPI.Controllers
         public async Task<IActionResult> UpdateSettings([FromBody] SettingsDto updates)
         {
             if (updates == null)
-                return BadRequest(new { message = "Payload inválido" });
+                return BadRequest(new { message = "Payload invï¿½lido" });
 
             try
             {
@@ -76,7 +76,7 @@ namespace ForrajeriaJovitaAPI.Controllers
                 var userRole = User.FindFirst(ClaimTypes.Role)?.Value?.ToLower();
                 if (userRole != "admin" && userRole != "administrador" && userRole != "administrador/a")
                 {
-                    _logger.LogWarning("Usuario sin permisos intentó actualizar settings. Role: {Role}", userRole);
+                    _logger.LogWarning("Usuario sin permisos intentï¿½ actualizar settings. Role: {Role}", userRole);
                     return Forbid();
                 }
 
@@ -123,7 +123,7 @@ namespace ForrajeriaJovitaAPI.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error al guardar settings");
-                return StatusCode(500, new { message = "Error al guardar configuración", error = ex.Message });
+                return StatusCode(500, new { message = "Error al guardar configuraciï¿½n", error = ex.Message });
             }
         }
 
@@ -158,7 +158,7 @@ namespace ForrajeriaJovitaAPI.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error al resetear settings");
-                return StatusCode(500, new { message = "Error al resetear configuración" });
+                return StatusCode(500, new { message = "Error al resetear configuraciï¿½n" });
             }
         }
 
@@ -185,6 +185,7 @@ namespace ForrajeriaJovitaAPI.Controllers
             d["deliveryTime"] = JsonSerializer.Serialize(dto.DeliveryTime, _jsonOpts);
 
             d["shippingZones"] = JsonSerializer.Serialize(dto.ShippingZones ?? new List<ShippingZoneDto>(), _jsonOpts);
+            d["heroSlides"] = JsonSerializer.Serialize(dto.HeroSlides ?? new List<HeroSlideDto>(), _jsonOpts);
 
             d["defaultShippingPrice"] = JsonSerializer.Serialize(dto.DefaultShippingPrice, _jsonOpts);
             d["cash"] = JsonSerializer.Serialize(dto.Cash, _jsonOpts);

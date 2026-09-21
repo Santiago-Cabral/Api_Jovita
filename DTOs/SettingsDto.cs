@@ -20,6 +20,24 @@ namespace ForrajeriaJovitaAPI.Dtos
         public List<string> Localities { get; set; } = new List<string>();
     }
 
+    public class HeroSlideDto
+    {
+        [JsonPropertyName("title")]
+        public string? Title { get; set; }
+
+        [JsonPropertyName("subtitle")]
+        public string? Subtitle { get; set; }
+
+        [JsonPropertyName("cta")]
+        public string? Cta { get; set; }
+
+        [JsonPropertyName("image")]
+        public string? Image { get; set; }
+
+        [JsonPropertyName("href")]
+        public string? Href { get; set; }
+    }
+
     public class SettingsDto
     {
         [JsonPropertyName("storeName")]
@@ -54,6 +72,9 @@ namespace ForrajeriaJovitaAPI.Dtos
 
         [JsonPropertyName("shippingZones")]
         public List<ShippingZoneDto> ShippingZones { get; set; } = new List<ShippingZoneDto>();
+
+        [JsonPropertyName("heroSlides")]
+        public List<HeroSlideDto>? HeroSlides { get; set; }
 
         [JsonPropertyName("defaultShippingPrice")]
         public int DefaultShippingPrice { get; set; } = 2500;
@@ -217,6 +238,12 @@ namespace ForrajeriaJovitaAPI.Dtos
             {
                 var zones = TryDeserialize<List<ShippingZoneDto>>(v);
                 if (zones != null && zones.Count > 0) dto.ShippingZones = zones;
+            }
+
+            if (dict.TryGetValue("heroSlides", out v))
+            {
+                var slides = TryDeserialize<List<HeroSlideDto>>(v);
+                if (slides != null && slides.Count > 0) dto.HeroSlides = slides;
             }
 
             if (dict.TryGetValue("bankName", out v)) dto.BankName = TryDeserialize<string>(v) ?? dto.BankName;
