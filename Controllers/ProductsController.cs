@@ -29,16 +29,19 @@ namespace ForrajeriaJovitaAPI.Controllers
         }
 
         // =========================================================
-        // GET: api/Products  -> lista con Stock total (paginable + búsqueda)
+        // GET: api/Products  -> lista con Stock total (paginable + búsqueda + destacados)
         // Sin page/pageSize: devuelve todo (igual que antes, admin OK)
         // Con page/pageSize: devuelve esa página + header X-Total-Count
         // Con search: filtra por nombre o código en TODO el catálogo
+        // Con featured=true: devuelve SOLO los productos destacados activos,
+        //   sin aplicar paginación (para que el carrusel de Home los tenga todos).
         // =========================================================
         [HttpGet]
         public async Task<ActionResult<IEnumerable<ProductResponseDto>>> GetProducts(
             [FromQuery] int? page = null,
             [FromQuery] int? pageSize = null,
-            [FromQuery] string? search = null)
+            [FromQuery] string? search = null,
+            [FromQuery] bool? featured = null)
         {
             var query = _context.Products
                 .Where(p => !p.IsDeleted)
@@ -54,11 +57,18 @@ namespace ForrajeriaJovitaAPI.Controllers
                     EF.Functions.Like(p.Code, $"%{term}%"));
             }
 
+            // ✅ Filtro de destacados: ignora paginación a propósito, el Home
+            // necesita la lista completa de destacados en una sola llamada.
+            if (featured.HasValue && featured.Value)
+            {
+                query = query.Where(p => p.IsFeatured && p.IsActived);
+            }
+
             query = query.OrderBy(p => p.Id);
 
             List<Product> products;
 
-            if (page.HasValue && pageSize.HasValue)
+            if (!featured.HasValue && page.HasValue && pageSize.HasValue)
             {
                 var totalCount = await query.CountAsync();
                 var safePage = page.Value < 1 ? 1 : page.Value;
