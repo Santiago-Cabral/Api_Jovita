@@ -3,9 +3,9 @@ namespace ForrajeriaJovitaAPI.Models
 {
     public enum PriceTier
     {
-        Retail = 1,
-        Wholesale = 2,
-        Special = 3
+        Retail = 0,
+        Wholesale = 1,
+        Special = 2
     }
 
     public class ProductUnitPrice
